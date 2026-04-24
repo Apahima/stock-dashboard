@@ -41,7 +41,7 @@ Recent headlines:
 
     message = client.messages.create(
         model='claude-opus-4-7',
-        max_tokens=400,
+        max_tokens=700,
         thinking={'type': 'adaptive'},
         messages=[{'role': 'user', 'content': prompt}],
     )

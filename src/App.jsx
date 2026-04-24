@@ -643,7 +643,7 @@ function PortfolioView({ portfolio, setPortfolio, apiKey, usdIls }) {
 
 // ─── Main App ─────────────────────────────────────────────────────────────────
 export default function App() {
-  const [loggedIn, setLoggedIn]     = useState(() => sessionStorage.getItem('auth') === '1')
+  const [loggedIn, setLoggedIn]     = useState(() => localStorage.getItem('auth') === '1')
   const [apiKey, setApiKey]         = useState(() => localStorage.getItem('finnhub_key') || '')
   const [tab, setTab]               = useState('dashboard')
   const [stocks, setStocks]         = useState(loadStocks)
@@ -660,8 +660,8 @@ export default function App() {
   const [usdIls, setUsdIls]             = useState(null)
   const [marketSummary, setMarketSummary] = useState(null)
 
-  const handleLogin  = () => { sessionStorage.setItem('auth', '1'); setLoggedIn(true) }
-  const handleLogout = () => { sessionStorage.removeItem('auth'); setLoggedIn(false) }
+  const handleLogin  = () => { localStorage.setItem('auth', '1'); setLoggedIn(true) }
+  const handleLogout = () => { localStorage.removeItem('auth'); setLoggedIn(false) }
 
   // Fear & Greed
   useEffect(() => {
