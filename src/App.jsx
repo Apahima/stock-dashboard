@@ -5,10 +5,11 @@ const APP_USER = import.meta.env.VITE_APP_USER || 'admin'
 const APP_PASS = import.meta.env.VITE_APP_PASS || ''
 
 const INDICES = [
-  { symbol: 'SPY', label: 'S&P 500 (SPY)' },
-  { symbol: 'QQQ', label: 'NASDAQ (QQQ)'  },
-  { symbol: 'DIA', label: 'DOW (DIA)'     },
-  { symbol: 'IWM', label: 'Russell 2000'  },
+  { symbol: 'SPY',  label: 'S&P 500 (SPY)' },
+  { symbol: 'QQQ',  label: 'NASDAQ (QQQ)'  },
+  { symbol: 'DIA',  label: 'DOW (DIA)'     },
+  { symbol: 'IWM',  label: 'Russell 2000'  },
+  { symbol: '^VIX', label: 'VIX',  tvSymbol: 'CBOE:VIX', noChange: true },
 ]
 
 const DEFAULT_STOCKS = [
@@ -790,15 +791,22 @@ export default function App() {
 
           <div className="section-title">Major Indices</div>
           <div className="indices-grid">
-            {INDICES.map(({ symbol, label }) => {
+            {INDICES.map(({ symbol, label, tvSymbol, noChange }) => {
               const q = quotes[symbol]
+              const tv = tvSymbol || symbol
               return (
                 <a className="index-card" key={symbol}
-                  href={`https://www.tradingview.com/chart/?symbol=${symbol}`}
+                  href={`https://www.tradingview.com/chart/?symbol=${tv}`}
                   target="_blank" rel="noreferrer">
                   <div className="index-label">{label}</div>
-                  {q ? (<><div className="index-price">${fmt(q.c)}</div><div className="index-change"><ChangeLabel d={q.d} dp={q.dp} /></div></>)
-                     : (<><div className="skeleton skeleton-price" /><div className="skeleton skeleton-line" style={{ width: '60%' }} /></>)}
+                  {q ? (
+                    <>
+                      <div className="index-price">{noChange ? fmt(q.c) : `$${fmt(q.c)}`}</div>
+                      {!noChange && <div className="index-change"><ChangeLabel d={q.d} dp={q.dp} /></div>}
+                    </>
+                  ) : (
+                    <><div className="skeleton skeleton-price" /><div className="skeleton skeleton-line" style={{ width: '60%' }} /></>
+                  )}
                 </a>
               )
             })}
