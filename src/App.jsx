@@ -641,33 +641,33 @@ function PortfolioView({ portfolio, setPortfolio, apiKey, usdIls }) {
   )
 }
 
-// ─── Twitter helpers ─────────────────────────────────────────────────────────
-const DEFAULT_TWITTER_ACCOUNTS = ['Reuters', 'YahooFinance', 'WSJ', 'zerohedge', 'markets']
+// ─── RSS News Feed helpers ────────────────────────────────────────────────────
+const DEFAULT_RSS_FEEDS = [
+  { name: 'Reuters Business', url: 'https://feeds.reuters.com/Reuters/businessNews' },
+  { name: 'Bloomberg Markets', url: 'https://feeds.bloomberg.com/markets/news.rss' },
+  { name: 'CNBC',             url: 'https://search.cnbc.com/rs/search/combinedcombined/index.xml' },
+  { name: 'MarketWatch',      url: 'https://feeds.marketwatch.com/marketwatch/topstories/' },
+  { name: 'Yahoo Finance',    url: 'https://finance.yahoo.com/news/rssindex' },
+]
 
-function loadTwitterAccounts() {
-  try { const s = localStorage.getItem('twitter_accounts'); if (s) return JSON.parse(s) } catch {}
-  return DEFAULT_TWITTER_ACCOUNTS
+function loadRssFeeds() {
+  try { const s = localStorage.getItem('rss_feeds'); if (s) return JSON.parse(s) } catch {}
+  return DEFAULT_RSS_FEEDS
 }
-function saveTwitterAccounts(list) { localStorage.setItem('twitter_accounts', JSON.stringify(list)) }
+function saveRssFeeds(list) { localStorage.setItem('rss_feeds', JSON.stringify(list)) }
 
-// ─── RSS-based tweet fetching ─────────────────────────────────────────────────
-// Uses RSSHub (public) → RSS2JSON proxy to get tweets without any API key.
-// Falls back to a direct nitter instance if RSSHub is slow.
 const RSS2JSON = 'https://api.rss2json.com/v1/api.json?rss_url='
-const rssUrl   = (handle) => `https://rsshub.app/twitter/user/${handle}`
 
-async function fetchTweetsRSS(handle) {
-  const url = `${RSS2JSON}${encodeURIComponent(rssUrl(handle))}`
-  const res  = await fetch(url)
+async function fetchFeed(feedUrl) {
+  const res  = await fetch(`${RSS2JSON}${encodeURIComponent(feedUrl)}`)
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
   const data = await res.json()
-  if (data.status !== 'ok') throw new Error(data.message || 'RSS error')
-  return (data.items || []).slice(0, 10).map(item => ({
-    id:      item.guid || item.link,
-    text:    (item.description || item.title || '').replace(/<[^>]+>/g, '').trim(),
-    link:    item.link,
-    time:    item.pubDate ? new Date(item.pubDate) : null,
-    author:  item.author || handle,
+  if (data.status !== 'ok') throw new Error(data.message || 'Feed error')
+  return (data.items || []).slice(0, 12).map(item => ({
+    id:    item.guid || item.link,
+    title: (item.title || '').replace(/<[^>]+>/g, '').trim(),
+    link:  item.link,
+    time:  item.pubDate ? new Date(item.pubDate) : null,
   }))
 }
 
@@ -680,33 +680,33 @@ function timeAgoDate(date) {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
 }
 
-// ─── Per-account tweet column ─────────────────────────────────────────────────
-function TweetColumn({ handle, onRemove }) {
-  const [tweets,  setTweets]  = useState(null)   // null = loading
-  const [error,   setError]   = useState(null)
+// ─── Single RSS feed column ───────────────────────────────────────────────────
+function RssFeedColumn({ feed, onRemove }) {
+  const [items,  setItems]  = useState(null)
+  const [error,  setError]  = useState(null)
 
   useEffect(() => {
-    setTweets(null); setError(null)
-    fetchTweetsRSS(handle)
-      .then(setTweets)
+    setItems(null); setError(null)
+    fetchFeed(feed.url)
+      .then(setItems)
       .catch(e => setError(e.message))
-  }, [handle])
+  }, [feed.url])
 
   return (
     <div className="twitter-card" style={{ position: 'relative' }}>
       <button className="twitter-remove-btn" onClick={onRemove} title="Remove">✕</button>
       <div className="twitter-card-header">
-        <span className="twitter-handle">@{handle}</span>
-        <a className="twitter-open-link" href={`https://x.com/${handle}`} target="_blank" rel="noreferrer">Open ↗</a>
+        <span className="twitter-handle">{feed.name}</span>
+        <a className="twitter-open-link" href={feed.url} target="_blank" rel="noreferrer">RSS ↗</a>
       </div>
 
-      {tweets === null && !error && (
+      {items === null && !error && (
         <div className="twitter-skeleton">
-          {[...Array(5)].map((_, i) => (
+          {[...Array(6)].map((_, i) => (
             <div key={i} className="twitter-skeleton-tweet">
               <div className="skeleton skeleton-line" style={{ width: '95%', marginBottom: 5 }} />
-              <div className="skeleton skeleton-line" style={{ width: '75%', marginBottom: 5 }} />
-              <div className="skeleton skeleton-line" style={{ width: '25%' }} />
+              <div className="skeleton skeleton-line" style={{ width: '60%', marginBottom: 5 }} />
+              <div className="skeleton skeleton-line" style={{ width: '20%' }} />
             </div>
           ))}
         </div>
@@ -714,17 +714,17 @@ function TweetColumn({ handle, onRemove }) {
 
       {error && (
         <div className="twitter-error">
-          <p>Could not load tweets.</p>
-          <a href={`https://x.com/${handle}`} target="_blank" rel="noreferrer">View @{handle} on X ↗</a>
+          <p>Could not load feed.</p>
+          <a href={feed.url} target="_blank" rel="noreferrer">Open RSS source ↗</a>
         </div>
       )}
 
-      {tweets && (
+      {items && (
         <div className="tweet-list">
-          {tweets.map(t => (
-            <a key={t.id} href={t.link} target="_blank" rel="noreferrer" className="tweet-item">
-              <div className="tweet-text">{t.text}</div>
-              <div className="tweet-time">{timeAgoDate(t.time)}</div>
+          {items.map(item => (
+            <a key={item.id} href={item.link} target="_blank" rel="noreferrer" className="tweet-item">
+              <div className="tweet-text">{item.title}</div>
+              <div className="tweet-time">{timeAgoDate(item.time)}</div>
             </a>
           ))}
         </div>
@@ -733,63 +733,67 @@ function TweetColumn({ handle, onRemove }) {
   )
 }
 
-// ─── Twitter Feed section ─────────────────────────────────────────────────────
-function TwitterFeed() {
-  const [accounts, setAccounts] = useState(loadTwitterAccounts)
-  const [input,    setInput]    = useState('')
-  const [adding,   setAdding]   = useState(false)
+// ─── RSS Feeds section ────────────────────────────────────────────────────────
+function RssFeedsPanel() {
+  const [feeds,       setFeeds]   = useState(loadRssFeeds)
+  const [nameInput,   setName]    = useState('')
+  const [urlInput,    setUrl]     = useState('')
+  const [adding,      setAdding]  = useState(false)
+  const [addError,    setAddError] = useState('')
 
-  const addAccount = () => {
-    const handle = input.trim().replace(/^@/, '')
-    if (!handle || accounts.includes(handle)) { setInput(''); setAdding(false); return }
-    const next = [...accounts, handle]
-    saveTwitterAccounts(next)
-    setAccounts(next)
-    setInput('')
-    setAdding(false)
+  const addFeed = () => {
+    const name = nameInput.trim()
+    const url  = urlInput.trim()
+    if (!name || !url) { setAddError('Enter both a name and a URL.'); return }
+    if (feeds.find(f => f.url === url)) { setAddError('Feed already added.'); return }
+    const next = [...feeds, { name, url }]
+    saveRssFeeds(next)
+    setFeeds(next)
+    setName(''); setUrl(''); setAdding(false); setAddError('')
   }
 
-  const removeAccount = (handle) => {
-    const next = accounts.filter(a => a !== handle)
-    saveTwitterAccounts(next)
-    setAccounts(next)
+  const removeFeed = (url) => {
+    const next = feeds.filter(f => f.url !== url)
+    saveRssFeeds(next)
+    setFeeds(next)
   }
 
   return (
     <div>
       <div className="section-title-row" style={{ marginBottom: 16 }}>
         <div className="section-title" style={{ marginBottom: 0 }}>
-          𝕏 Feed <span className="stock-count">({accounts.length} accounts)</span>
+          Live News Feeds <span className="stock-count">({feeds.length} sources)</span>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           {adding ? (
-            <>
-              <input className="twitter-add-input" type="text" placeholder="@username"
-                value={input} autoFocus
-                onChange={e => setInput(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') addAccount(); if (e.key === 'Escape') { setAdding(false); setInput('') } }}
-              />
-              <button className="btn btn-sm" onClick={addAccount}>Add</button>
-              <button className="btn btn-outline btn-sm" onClick={() => { setAdding(false); setInput('') }}>Cancel</button>
-            </>
+            <div className="rss-add-form">
+              <input className="twitter-add-input" placeholder="Name (e.g. Reuters)"
+                value={nameInput} autoFocus onChange={e => setName(e.target.value)} />
+              <input className="twitter-add-input" style={{ width: 260 }} placeholder="RSS URL"
+                value={urlInput} onChange={e => setUrl(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') addFeed(); if (e.key === 'Escape') { setAdding(false); setAddError('') } }} />
+              {addError && <span style={{ color: '#fca5a5', fontSize: '0.75rem' }}>{addError}</span>}
+              <button className="btn btn-sm" onClick={addFeed}>Add</button>
+              <button className="btn btn-outline btn-sm" onClick={() => { setAdding(false); setAddError('') }}>Cancel</button>
+            </div>
           ) : (
             <>
-              <button className="btn btn-outline btn-sm" onClick={() => { const d = DEFAULT_TWITTER_ACCOUNTS; setAccounts(d); saveTwitterAccounts(d) }}>Reset</button>
-              <button className="btn btn-sm" onClick={() => setAdding(true)}>+ Add Account</button>
+              <button className="btn btn-outline btn-sm" onClick={() => { setFeeds(DEFAULT_RSS_FEEDS); saveRssFeeds(DEFAULT_RSS_FEEDS) }}>Reset</button>
+              <button className="btn btn-sm" onClick={() => setAdding(true)}>+ Add Feed</button>
             </>
           )}
         </div>
       </div>
 
-      {accounts.length === 0 ? (
+      {feeds.length === 0 ? (
         <div className="portfolio-empty">
-          <p>No accounts added yet.</p>
-          <button className="btn" onClick={() => setAdding(true)}>Add your first account</button>
+          <p>No feeds added yet.</p>
+          <button className="btn" onClick={() => setAdding(true)}>Add your first feed</button>
         </div>
       ) : (
         <div className="twitter-grid">
-          {accounts.map(handle => (
-            <TweetColumn key={handle} handle={handle} onRemove={() => removeAccount(handle)} />
+          {feeds.map(feed => (
+            <RssFeedColumn key={feed.url} feed={feed} onRemove={() => removeFeed(feed.url)} />
           ))}
         </div>
       )}
@@ -1001,7 +1005,7 @@ export default function App() {
                 📰 Market News
               </button>
               <button className={`news-tab-btn${newsTab === 'twitter' ? ' active' : ''}`} onClick={() => setNewsTab('twitter')}>
-                𝕏 Twitter / X
+                📡 Live Feeds
               </button>
             </div>
 
@@ -1029,7 +1033,7 @@ export default function App() {
               )
             )}
 
-            {newsTab === 'twitter' && <TwitterFeed />}
+            {newsTab === 'twitter' && <RssFeedsPanel />}
           </div>
         </>
       )}
