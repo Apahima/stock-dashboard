@@ -643,9 +643,9 @@ function PortfolioView({ portfolio, setPortfolio, apiKey, usdIls }) {
 
 // ─── RSS News Feed helpers ────────────────────────────────────────────────────
 const DEFAULT_RSS_FEEDS = [
-  { name: 'Reuters Business', url: 'https://feeds.reuters.com/Reuters/businessNews' },
+  { name: 'Reuters Business', url: 'https://feeds.reuters.com/reuters/businessNews' },
   { name: 'Bloomberg Markets', url: 'https://feeds.bloomberg.com/markets/news.rss' },
-  { name: 'CNBC',             url: 'https://search.cnbc.com/rs/search/combinedcombined/index.xml' },
+  { name: 'CNBC Markets',     url: 'https://www.cnbc.com/id/10000664/device/rss/rss.html' },
   { name: 'MarketWatch',      url: 'https://feeds.marketwatch.com/marketwatch/topstories/' },
   { name: 'Yahoo Finance',    url: 'https://finance.yahoo.com/news/rssindex' },
 ]
