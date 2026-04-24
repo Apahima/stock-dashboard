@@ -652,13 +652,26 @@ function saveTwitterAccounts(list) { localStorage.setItem('twitter_accounts', JS
 
 // ─── Single embedded Twitter timeline ────────────────────────────────────────
 function TwitterTimeline({ username }) {
-  const ref = useRef(null)
+  const ref      = useRef(null)
+  const [ready, setReady] = useState(false)
 
   useEffect(() => {
     if (!ref.current) return
-    ref.current.innerHTML = `<a class="twitter-timeline" data-height="480" data-theme="dark" data-chrome="noheader nofooter noborders" href="https://twitter.com/${username}">Tweets by @${username}</a>`
-    if (window.twttr?.widgets) {
-      window.twttr.widgets.load(ref.current)
+    ref.current.innerHTML = ''
+    setReady(false)
+
+    const render = () => {
+      window.twttr.widgets.createTimeline(
+        { sourceType: 'profile', screenName: username },
+        ref.current,
+        { height: 500, theme: 'dark', chrome: 'noheader nofooter noborders transparent' }
+      ).then(() => setReady(true)).catch(() => {})
+    }
+
+    if (window.twttr?.widgets?.createTimeline) {
+      render()
+    } else {
+      window.twttr?.ready?.(render)
     }
   }, [username])
 
@@ -668,26 +681,42 @@ function TwitterTimeline({ username }) {
         <span className="twitter-handle">@{username}</span>
         <a className="twitter-open-link" href={`https://twitter.com/${username}`} target="_blank" rel="noreferrer">Open ↗</a>
       </div>
-      <div ref={ref} className="twitter-embed-wrap" />
+      <div style={{ position: 'relative' }}>
+        {!ready && (
+          <div className="twitter-skeleton">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="twitter-skeleton-tweet">
+                <div className="skeleton skeleton-line" style={{ width: '30%', marginBottom: 6 }} />
+                <div className="skeleton skeleton-line" style={{ width: '95%', marginBottom: 4 }} />
+                <div className="skeleton skeleton-line" style={{ width: '70%' }} />
+              </div>
+            ))}
+          </div>
+        )}
+        <div ref={ref} className="twitter-embed-wrap" />
+      </div>
     </div>
   )
 }
 
 // ─── Twitter Feed section ─────────────────────────────────────────────────────
 function TwitterFeed() {
-  const [accounts, setAccounts]   = useState(loadTwitterAccounts)
-  const [input, setInput]         = useState('')
-  const [adding, setAdding]       = useState(false)
-  const [scriptLoaded, setScriptLoaded] = useState(!!window.twttr)
+  const [accounts, setAccounts]         = useState(loadTwitterAccounts)
+  const [input, setInput]               = useState('')
+  const [adding, setAdding]             = useState(false)
+  const [scriptReady, setScriptReady]   = useState(false)
 
-  // Load Twitter widget script once
+  // Load Twitter widget script once, wait for twttr.ready
   useEffect(() => {
-    if (window.twttr) { setScriptLoaded(true); return }
+    const onReady = () => setScriptReady(true)
+    if (window.twttr?.widgets) { onReady(); return }
     const script = document.createElement('script')
     script.src = 'https://platform.twitter.com/widgets.js'
+    script.charset = 'utf-8'
     script.async = true
-    script.onload = () => setScriptLoaded(true)
     document.body.appendChild(script)
+    // twttr stub is set synchronously by the script; .ready fires when fully loaded
+    script.onload = () => window.twttr.ready(onReady)
   }, [])
 
   const addAccount = () => {
@@ -746,14 +775,25 @@ function TwitterFeed() {
           {accounts.map(handle => (
             <div key={handle} style={{ position: 'relative' }}>
               <button className="twitter-remove-btn" onClick={() => removeAccount(handle)} title="Remove">✕</button>
-              {scriptLoaded ? (
-                <TwitterTimeline username={handle} />
-              ) : (
-                <div className="twitter-card">
-                  <div className="skeleton skeleton-line" style={{ width: '40%', marginBottom: 12 }} />
-                  <div className="skeleton" style={{ height: 440, borderRadius: 8 }} />
-                </div>
-              )}
+              {scriptReady
+                ? <TwitterTimeline username={handle} />
+                : (
+                  <div className="twitter-card">
+                    <div className="twitter-card-header">
+                      <span className="twitter-handle">@{handle}</span>
+                    </div>
+                    <div className="twitter-skeleton">
+                      {[...Array(4)].map((_, i) => (
+                        <div key={i} className="twitter-skeleton-tweet">
+                          <div className="skeleton skeleton-line" style={{ width: '30%', marginBottom: 6 }} />
+                          <div className="skeleton skeleton-line" style={{ width: '95%', marginBottom: 4 }} />
+                          <div className="skeleton skeleton-line" style={{ width: '70%' }} />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )
+              }
             </div>
           ))}
         </div>

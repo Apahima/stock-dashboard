@@ -1006,6 +1006,18 @@ a.stock-card, a.index-card {
 
 .twitter-add-input:focus { border-color: #38bdf8; }
 
+.twitter-skeleton {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.twitter-skeleton-tweet {
+  padding: 14px 0;
+  border-bottom: 1px solid #2d3448;
+}
+
 @media (max-width: 700px) {
   .twitter-grid { grid-template-columns: 1fr; }
 }
