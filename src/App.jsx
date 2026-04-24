@@ -650,74 +650,94 @@ function loadTwitterAccounts() {
 }
 function saveTwitterAccounts(list) { localStorage.setItem('twitter_accounts', JSON.stringify(list)) }
 
-// ─── Single embedded Twitter timeline ────────────────────────────────────────
-function TwitterTimeline({ username }) {
-  const ref      = useRef(null)
-  const [ready, setReady] = useState(false)
+// ─── RSS-based tweet fetching ─────────────────────────────────────────────────
+// Uses RSSHub (public) → RSS2JSON proxy to get tweets without any API key.
+// Falls back to a direct nitter instance if RSSHub is slow.
+const RSS2JSON = 'https://api.rss2json.com/v1/api.json?rss_url='
+const rssUrl   = (handle) => `https://rsshub.app/twitter/user/${handle}`
+
+async function fetchTweetsRSS(handle) {
+  const url = `${RSS2JSON}${encodeURIComponent(rssUrl(handle))}`
+  const res  = await fetch(url)
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  const data = await res.json()
+  if (data.status !== 'ok') throw new Error(data.message || 'RSS error')
+  return (data.items || []).slice(0, 10).map(item => ({
+    id:      item.guid || item.link,
+    text:    (item.description || item.title || '').replace(/<[^>]+>/g, '').trim(),
+    link:    item.link,
+    time:    item.pubDate ? new Date(item.pubDate) : null,
+    author:  item.author || handle,
+  }))
+}
+
+function timeAgoDate(date) {
+  if (!date) return ''
+  const diff = Math.floor((Date.now() - date.getTime()) / 60000)
+  if (diff < 1)    return 'just now'
+  if (diff < 60)   return `${diff}m ago`
+  if (diff < 1440) return `${Math.floor(diff / 60)}h ago`
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+}
+
+// ─── Per-account tweet column ─────────────────────────────────────────────────
+function TweetColumn({ handle, onRemove }) {
+  const [tweets,  setTweets]  = useState(null)   // null = loading
+  const [error,   setError]   = useState(null)
 
   useEffect(() => {
-    if (!ref.current) return
-    ref.current.innerHTML = ''
-    setReady(false)
-
-    const render = () => {
-      window.twttr.widgets.createTimeline(
-        { sourceType: 'profile', screenName: username },
-        ref.current,
-        { height: 500, theme: 'dark', chrome: 'noheader nofooter noborders transparent' }
-      ).then(() => setReady(true)).catch(() => {})
-    }
-
-    if (window.twttr?.widgets?.createTimeline) {
-      render()
-    } else {
-      window.twttr?.ready?.(render)
-    }
-  }, [username])
+    setTweets(null); setError(null)
+    fetchTweetsRSS(handle)
+      .then(setTweets)
+      .catch(e => setError(e.message))
+  }, [handle])
 
   return (
-    <div className="twitter-card">
+    <div className="twitter-card" style={{ position: 'relative' }}>
+      <button className="twitter-remove-btn" onClick={onRemove} title="Remove">✕</button>
       <div className="twitter-card-header">
-        <span className="twitter-handle">@{username}</span>
-        <a className="twitter-open-link" href={`https://twitter.com/${username}`} target="_blank" rel="noreferrer">Open ↗</a>
+        <span className="twitter-handle">@{handle}</span>
+        <a className="twitter-open-link" href={`https://x.com/${handle}`} target="_blank" rel="noreferrer">Open ↗</a>
       </div>
-      <div style={{ position: 'relative' }}>
-        {!ready && (
-          <div className="twitter-skeleton">
-            {[...Array(4)].map((_, i) => (
-              <div key={i} className="twitter-skeleton-tweet">
-                <div className="skeleton skeleton-line" style={{ width: '30%', marginBottom: 6 }} />
-                <div className="skeleton skeleton-line" style={{ width: '95%', marginBottom: 4 }} />
-                <div className="skeleton skeleton-line" style={{ width: '70%' }} />
-              </div>
-            ))}
-          </div>
-        )}
-        <div ref={ref} className="twitter-embed-wrap" />
-      </div>
+
+      {tweets === null && !error && (
+        <div className="twitter-skeleton">
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="twitter-skeleton-tweet">
+              <div className="skeleton skeleton-line" style={{ width: '95%', marginBottom: 5 }} />
+              <div className="skeleton skeleton-line" style={{ width: '75%', marginBottom: 5 }} />
+              <div className="skeleton skeleton-line" style={{ width: '25%' }} />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {error && (
+        <div className="twitter-error">
+          <p>Could not load tweets.</p>
+          <a href={`https://x.com/${handle}`} target="_blank" rel="noreferrer">View @{handle} on X ↗</a>
+        </div>
+      )}
+
+      {tweets && (
+        <div className="tweet-list">
+          {tweets.map(t => (
+            <a key={t.id} href={t.link} target="_blank" rel="noreferrer" className="tweet-item">
+              <div className="tweet-text">{t.text}</div>
+              <div className="tweet-time">{timeAgoDate(t.time)}</div>
+            </a>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
 
 // ─── Twitter Feed section ─────────────────────────────────────────────────────
 function TwitterFeed() {
-  const [accounts, setAccounts]         = useState(loadTwitterAccounts)
-  const [input, setInput]               = useState('')
-  const [adding, setAdding]             = useState(false)
-  const [scriptReady, setScriptReady]   = useState(false)
-
-  // Load Twitter widget script once, wait for twttr.ready
-  useEffect(() => {
-    const onReady = () => setScriptReady(true)
-    if (window.twttr?.widgets) { onReady(); return }
-    const script = document.createElement('script')
-    script.src = 'https://platform.twitter.com/widgets.js'
-    script.charset = 'utf-8'
-    script.async = true
-    document.body.appendChild(script)
-    // twttr stub is set synchronously by the script; .ready fires when fully loaded
-    script.onload = () => window.twttr.ready(onReady)
-  }, [])
+  const [accounts, setAccounts] = useState(loadTwitterAccounts)
+  const [input,    setInput]    = useState('')
+  const [adding,   setAdding]   = useState(false)
 
   const addAccount = () => {
     const handle = input.trim().replace(/^@/, '')
@@ -739,17 +759,13 @@ function TwitterFeed() {
     <div>
       <div className="section-title-row" style={{ marginBottom: 16 }}>
         <div className="section-title" style={{ marginBottom: 0 }}>
-          Twitter / X Feed <span className="stock-count">({accounts.length} accounts)</span>
+          𝕏 Feed <span className="stock-count">({accounts.length} accounts)</span>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           {adding ? (
             <>
-              <input
-                className="twitter-add-input"
-                type="text"
-                placeholder="@username"
-                value={input}
-                autoFocus
+              <input className="twitter-add-input" type="text" placeholder="@username"
+                value={input} autoFocus
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') addAccount(); if (e.key === 'Escape') { setAdding(false); setInput('') } }}
               />
@@ -758,7 +774,7 @@ function TwitterFeed() {
             </>
           ) : (
             <>
-              <button className="btn btn-outline btn-sm" onClick={() => { setAccounts(DEFAULT_TWITTER_ACCOUNTS); saveTwitterAccounts(DEFAULT_TWITTER_ACCOUNTS) }}>Reset</button>
+              <button className="btn btn-outline btn-sm" onClick={() => { const d = DEFAULT_TWITTER_ACCOUNTS; setAccounts(d); saveTwitterAccounts(d) }}>Reset</button>
               <button className="btn btn-sm" onClick={() => setAdding(true)}>+ Add Account</button>
             </>
           )}
@@ -773,28 +789,7 @@ function TwitterFeed() {
       ) : (
         <div className="twitter-grid">
           {accounts.map(handle => (
-            <div key={handle} style={{ position: 'relative' }}>
-              <button className="twitter-remove-btn" onClick={() => removeAccount(handle)} title="Remove">✕</button>
-              {scriptReady
-                ? <TwitterTimeline username={handle} />
-                : (
-                  <div className="twitter-card">
-                    <div className="twitter-card-header">
-                      <span className="twitter-handle">@{handle}</span>
-                    </div>
-                    <div className="twitter-skeleton">
-                      {[...Array(4)].map((_, i) => (
-                        <div key={i} className="twitter-skeleton-tweet">
-                          <div className="skeleton skeleton-line" style={{ width: '30%', marginBottom: 6 }} />
-                          <div className="skeleton skeleton-line" style={{ width: '95%', marginBottom: 4 }} />
-                          <div className="skeleton skeleton-line" style={{ width: '70%' }} />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )
-              }
-            </div>
+            <TweetColumn key={handle} handle={handle} onRemove={() => removeAccount(handle)} />
           ))}
         </div>
       )}
