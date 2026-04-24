@@ -202,6 +202,7 @@ body {
 }
 
 .stock-card:hover { border-color: #38bdf8; transform: translateY(-2px); }
+.stock-card:hover .tv-hint { opacity: 1; }
 
 .stock-symbol { font-size: 1rem; font-weight: 700; color: #fff; margin-bottom: 2px; }
 
@@ -217,6 +218,21 @@ body {
 .stock-price { font-size: 1.2rem; font-weight: 600; color: #e2e8f0; margin-bottom: 4px; }
 
 .stock-change-row { display: flex; gap: 8px; font-size: 0.8rem; font-weight: 500; }
+
+.tv-hint {
+  font-size: 0.68rem;
+  color: #38bdf8;
+  margin-top: 8px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+/* Make anchor cards look like divs */
+a.stock-card, a.index-card {
+  text-decoration: none;
+  display: block;
+  color: inherit;
+}
 
 /* News */
 .news-section { margin-bottom: 32px; }

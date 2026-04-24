@@ -753,11 +753,13 @@ export default function App() {
             {INDICES.map(({ symbol, label }) => {
               const q = quotes[symbol]
               return (
-                <div className="index-card" key={symbol}>
+                <a className="index-card" key={symbol}
+                  href={`https://www.tradingview.com/chart/?symbol=${symbol}`}
+                  target="_blank" rel="noreferrer">
                   <div className="index-label">{label}</div>
                   {q ? (<><div className="index-price">${fmt(q.c)}</div><div className="index-change"><ChangeLabel d={q.d} dp={q.dp} /></div></>)
                      : (<><div className="skeleton skeleton-price" /><div className="skeleton skeleton-line" style={{ width: '60%' }} /></>)}
-                </div>
+                </a>
               )
             })}
           </div>
@@ -774,12 +776,15 @@ export default function App() {
                 const q = quotes[symbol]
                 if (!q) return <SkeletonCard key={symbol} />
                 return (
-                  <div className="stock-card" key={symbol}>
+                  <a className="stock-card" key={symbol}
+                    href={`https://www.tradingview.com/chart/?symbol=${symbol}`}
+                    target="_blank" rel="noreferrer">
                     <div className="stock-symbol">{symbol}</div>
                     <div className="stock-name">{name}</div>
                     <div className="stock-price">${fmt(q.c)}</div>
                     <div className="stock-change-row"><ChangeLabel d={q.d} dp={q.dp} /></div>
-                  </div>
+                    <div className="tv-hint">Open in TradingView ↗</div>
+                  </a>
                 )
               })}
             </div>
