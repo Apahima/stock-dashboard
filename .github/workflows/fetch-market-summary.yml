@@ -1,0 +1,44 @@
+name: Fetch Market Summary
+
+on:
+  schedule:
+    # Weekdays: 14:30 UTC (market open) and 21:15 UTC (after close)
+    - cron: '30 14 * * 1-5'
+    - cron: '15 21 * * 1-5'
+  workflow_dispatch:
+
+jobs:
+  summarize:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install anthropic requests
+
+      - name: Generate market summary
+        run: python scripts/fetch_market_summary.py
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          FINNHUB_KEY: ${{ secrets.FINNHUB_KEY }}
+
+      - name: Commit if changed
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add public/market-summary.json
+          git diff --staged --quiet || git commit -m "chore: update market summary"
+          git push
+
+      - name: Trigger site redeploy
+        run: gh workflow run deploy.yml --ref main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

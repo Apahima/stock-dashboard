@@ -346,6 +346,35 @@ function ApiKeyScreen({ onSave }) {
   )
 }
 
+// ─── Market Summary card ──────────────────────────────────────────────────────
+function MarketSummaryCard({ data }) {
+  const isPending = !data || data.summary?.startsWith('Market summary will be available')
+
+  const updatedLabel = data?.updatedAt
+    ? new Date(data.updatedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+    : null
+
+  return (
+    <div className="market-summary-card">
+      <div className="section-title" style={{ marginBottom: 10 }}>AI Market Sentiment</div>
+      {isPending ? (
+        <>
+          <div className="skeleton skeleton-line" style={{ width: '100%', marginBottom: 8 }} />
+          <div className="skeleton skeleton-line" style={{ width: '92%', marginBottom: 8 }} />
+          <div className="skeleton skeleton-line" style={{ width: '80%', marginBottom: 8 }} />
+          <div className="skeleton skeleton-line" style={{ width: '88%', marginBottom: 8 }} />
+          <div className="skeleton skeleton-line" style={{ width: '60%' }} />
+        </>
+      ) : (
+        <>
+          <p className="market-summary-text">{data.summary}</p>
+          {updatedLabel && <div className="market-summary-updated">Updated {updatedLabel} · Powered by Claude AI</div>}
+        </>
+      )}
+    </div>
+  )
+}
+
 // ─── Sentiment cards ──────────────────────────────────────────────────────────
 function FearGreedCard({ data, error }) {
   if (error) return (
@@ -629,6 +658,7 @@ export default function App() {
   const [fgError, setFgError]           = useState(false)
   const [aaii, setAaii]                 = useState(null)
   const [usdIls, setUsdIls]             = useState(null)
+  const [marketSummary, setMarketSummary] = useState(null)
 
   const handleLogin  = () => { sessionStorage.setItem('auth', '1'); setLoggedIn(true) }
   const handleLogout = () => { sessionStorage.removeItem('auth'); setLoggedIn(false) }
@@ -654,6 +684,14 @@ export default function App() {
     fetch('/stock-dashboard/aaii.json')
       .then(r => { if (!r.ok) throw new Error(); return r.json() })
       .then(setAaii).catch(() => {})
+  }, [loggedIn, apiKey])
+
+  // Market Summary
+  useEffect(() => {
+    if (!loggedIn || !apiKey) return
+    fetch('/stock-dashboard/market-summary.json')
+      .then(r => { if (!r.ok) throw new Error(); return r.json() })
+      .then(setMarketSummary).catch(() => {})
   }, [loggedIn, apiKey])
 
   // USD/ILS exchange rate — free, no key needed
@@ -743,6 +781,8 @@ export default function App() {
       {/* ── Dashboard Tab ── */}
       {tab === 'dashboard' && (
         <>
+          <MarketSummaryCard data={marketSummary} />
+
           <div className="sentiment-row">
             <FearGreedCard data={fearGreed} error={fgError} />
             <AaiiCard data={aaii} />
@@ -822,6 +862,7 @@ export default function App() {
         &nbsp;· Fear &amp; Greed: <a href="https://edition.cnn.com/markets/fear-and-greed" target="_blank" rel="noreferrer" style={{ color: '#38bdf8' }}>CNN</a>
         &nbsp;· Sentiment: <a href="https://www.aaii.com/sentimentsurvey" target="_blank" rel="noreferrer" style={{ color: '#38bdf8' }}>AAII</a>
         &nbsp;· FX: <a href="https://open.er-api.com" target="_blank" rel="noreferrer" style={{ color: '#38bdf8' }}>ExchangeRate-API</a>
+        &nbsp;· Summary: <a href="https://anthropic.com" target="_blank" rel="noreferrer" style={{ color: '#38bdf8' }}>Claude AI</a>
         &nbsp;· Prices may be delayed 15 min
       </div>
     </div>
