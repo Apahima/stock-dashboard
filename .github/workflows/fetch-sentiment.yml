@@ -1,0 +1,40 @@
+name: Fetch AAII Sentiment
+
+on:
+  schedule:
+    # Every Thursday at 17:00 UTC (noon ET, after AAII publishes)
+    - cron: '0 17 * * 4'
+  workflow_dispatch:
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install requests openpyxl
+
+      - name: Fetch AAII data
+        run: python scripts/fetch_aaii.py
+
+      - name: Commit if changed
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add public/aaii.json
+          git diff --staged --quiet || git commit -m "chore: update AAII sentiment data"
+          git push
+
+      - name: Trigger site redeploy
+        run: gh workflow run deploy.yml --ref main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
