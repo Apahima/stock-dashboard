@@ -906,3 +906,106 @@ a.stock-card, a.index-card {
   font-size: 0.7rem;
   color: #475569;
 }
+
+/* News sub-tabs */
+.news-sub-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid #2d3448;
+  padding-bottom: 0;
+}
+
+.news-tab-btn {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #64748b;
+  font-size: 0.85rem;
+  font-weight: 500;
+  padding: 8px 16px;
+  cursor: pointer;
+  margin-bottom: -1px;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.news-tab-btn:hover { color: #e2e8f0; }
+.news-tab-btn.active { color: #38bdf8; border-bottom-color: #38bdf8; }
+
+/* Twitter Feed */
+.twitter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+}
+
+.twitter-card {
+  background: #1e2130;
+  border: 1px solid #2d3448;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.twitter-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid #2d3448;
+}
+
+.twitter-handle {
+  font-weight: 600;
+  font-size: 0.88rem;
+  color: #e2e8f0;
+}
+
+.twitter-open-link {
+  font-size: 0.75rem;
+  color: #38bdf8;
+  text-decoration: none;
+}
+
+.twitter-embed-wrap {
+  padding: 0;
+  min-height: 480px;
+}
+
+.twitter-embed-wrap iframe {
+  border-radius: 0 !important;
+}
+
+.twitter-remove-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 10;
+  background: #1e2130;
+  border: 1px solid #2d3448;
+  color: #64748b;
+  font-size: 0.75rem;
+  cursor: pointer;
+  padding: 2px 7px;
+  border-radius: 6px;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.twitter-remove-btn:hover { border-color: #ef4444; color: #ef4444; }
+
+.twitter-add-input {
+  padding: 5px 10px;
+  background: #0f1117;
+  border: 1px solid #2d3448;
+  border-radius: 8px;
+  color: #e2e8f0;
+  font-size: 0.82rem;
+  outline: none;
+  width: 140px;
+  transition: border-color 0.2s;
+}
+
+.twitter-add-input:focus { border-color: #38bdf8; }
+
+@media (max-width: 700px) {
+  .twitter-grid { grid-template-columns: 1fr; }
+}

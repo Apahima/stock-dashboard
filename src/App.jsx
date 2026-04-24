@@ -641,6 +641,127 @@ function PortfolioView({ portfolio, setPortfolio, apiKey, usdIls }) {
   )
 }
 
+// ─── Twitter helpers ─────────────────────────────────────────────────────────
+const DEFAULT_TWITTER_ACCOUNTS = ['Reuters', 'YahooFinance', 'WSJ', 'zerohedge', 'markets']
+
+function loadTwitterAccounts() {
+  try { const s = localStorage.getItem('twitter_accounts'); if (s) return JSON.parse(s) } catch {}
+  return DEFAULT_TWITTER_ACCOUNTS
+}
+function saveTwitterAccounts(list) { localStorage.setItem('twitter_accounts', JSON.stringify(list)) }
+
+// ─── Single embedded Twitter timeline ────────────────────────────────────────
+function TwitterTimeline({ username }) {
+  const ref = useRef(null)
+
+  useEffect(() => {
+    if (!ref.current) return
+    ref.current.innerHTML = `<a class="twitter-timeline" data-height="480" data-theme="dark" data-chrome="noheader nofooter noborders" href="https://twitter.com/${username}">Tweets by @${username}</a>`
+    if (window.twttr?.widgets) {
+      window.twttr.widgets.load(ref.current)
+    }
+  }, [username])
+
+  return (
+    <div className="twitter-card">
+      <div className="twitter-card-header">
+        <span className="twitter-handle">@{username}</span>
+        <a className="twitter-open-link" href={`https://twitter.com/${username}`} target="_blank" rel="noreferrer">Open ↗</a>
+      </div>
+      <div ref={ref} className="twitter-embed-wrap" />
+    </div>
+  )
+}
+
+// ─── Twitter Feed section ─────────────────────────────────────────────────────
+function TwitterFeed() {
+  const [accounts, setAccounts]   = useState(loadTwitterAccounts)
+  const [input, setInput]         = useState('')
+  const [adding, setAdding]       = useState(false)
+  const [scriptLoaded, setScriptLoaded] = useState(!!window.twttr)
+
+  // Load Twitter widget script once
+  useEffect(() => {
+    if (window.twttr) { setScriptLoaded(true); return }
+    const script = document.createElement('script')
+    script.src = 'https://platform.twitter.com/widgets.js'
+    script.async = true
+    script.onload = () => setScriptLoaded(true)
+    document.body.appendChild(script)
+  }, [])
+
+  const addAccount = () => {
+    const handle = input.trim().replace(/^@/, '')
+    if (!handle || accounts.includes(handle)) { setInput(''); setAdding(false); return }
+    const next = [...accounts, handle]
+    saveTwitterAccounts(next)
+    setAccounts(next)
+    setInput('')
+    setAdding(false)
+  }
+
+  const removeAccount = (handle) => {
+    const next = accounts.filter(a => a !== handle)
+    saveTwitterAccounts(next)
+    setAccounts(next)
+  }
+
+  return (
+    <div>
+      <div className="section-title-row" style={{ marginBottom: 16 }}>
+        <div className="section-title" style={{ marginBottom: 0 }}>
+          Twitter / X Feed <span className="stock-count">({accounts.length} accounts)</span>
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {adding ? (
+            <>
+              <input
+                className="twitter-add-input"
+                type="text"
+                placeholder="@username"
+                value={input}
+                autoFocus
+                onChange={e => setInput(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') addAccount(); if (e.key === 'Escape') { setAdding(false); setInput('') } }}
+              />
+              <button className="btn btn-sm" onClick={addAccount}>Add</button>
+              <button className="btn btn-outline btn-sm" onClick={() => { setAdding(false); setInput('') }}>Cancel</button>
+            </>
+          ) : (
+            <>
+              <button className="btn btn-outline btn-sm" onClick={() => { setAccounts(DEFAULT_TWITTER_ACCOUNTS); saveTwitterAccounts(DEFAULT_TWITTER_ACCOUNTS) }}>Reset</button>
+              <button className="btn btn-sm" onClick={() => setAdding(true)}>+ Add Account</button>
+            </>
+          )}
+        </div>
+      </div>
+
+      {accounts.length === 0 ? (
+        <div className="portfolio-empty">
+          <p>No accounts added yet.</p>
+          <button className="btn" onClick={() => setAdding(true)}>Add your first account</button>
+        </div>
+      ) : (
+        <div className="twitter-grid">
+          {accounts.map(handle => (
+            <div key={handle} style={{ position: 'relative' }}>
+              <button className="twitter-remove-btn" onClick={() => removeAccount(handle)} title="Remove">✕</button>
+              {scriptLoaded ? (
+                <TwitterTimeline username={handle} />
+              ) : (
+                <div className="twitter-card">
+                  <div className="skeleton skeleton-line" style={{ width: '40%', marginBottom: 12 }} />
+                  <div className="skeleton" style={{ height: 440, borderRadius: 8 }} />
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── Main App ─────────────────────────────────────────────────────────────────
 export default function App() {
   const [loggedIn, setLoggedIn]     = useState(() => localStorage.getItem('auth') === '1')
@@ -649,6 +770,7 @@ export default function App() {
   const [stocks, setStocks]         = useState(loadStocks)
   const [portfolio, setPortfolio]   = useState(loadPortfolio)
   const [showManage, setShowManage] = useState(false)
+  const [newsTab, setNewsTab]       = useState('news')
   const [quotes, setQuotes]         = useState({})
   const [news, setNews]             = useState([])
   const [loading, setLoading]       = useState(false)
@@ -838,20 +960,42 @@ export default function App() {
             </div>
           </div>
 
-          {news.length > 0 && (
-            <div className="news-section">
-              <div className="section-title">Market News</div>
-              <div className="news-grid">
-                {news.map(item => (
-                  <a key={item.id} className="news-card" href={item.url} target="_blank" rel="noreferrer">
-                    <div className="news-source">{item.source}</div>
-                    <div className="news-headline">{item.headline}</div>
-                    <div className="news-time">{timeAgo(item.datetime)}</div>
-                  </a>
-                ))}
-              </div>
+          <div className="news-section">
+            <div className="news-sub-tabs">
+              <button className={`news-tab-btn${newsTab === 'news' ? ' active' : ''}`} onClick={() => setNewsTab('news')}>
+                📰 Market News
+              </button>
+              <button className={`news-tab-btn${newsTab === 'twitter' ? ' active' : ''}`} onClick={() => setNewsTab('twitter')}>
+                𝕏 Twitter / X
+              </button>
             </div>
-          )}
+
+            {newsTab === 'news' && (
+              news.length > 0 ? (
+                <div className="news-grid">
+                  {news.map(item => (
+                    <a key={item.id} className="news-card" href={item.url} target="_blank" rel="noreferrer">
+                      <div className="news-source">{item.source}</div>
+                      <div className="news-headline">{item.headline}</div>
+                      <div className="news-time">{timeAgo(item.datetime)}</div>
+                    </a>
+                  ))}
+                </div>
+              ) : (
+                <div className="skeleton-news-grid">
+                  {[...Array(6)].map((_, i) => (
+                    <div key={i} className="news-card">
+                      <div className="skeleton skeleton-line" style={{ width: '30%', marginBottom: 8 }} />
+                      <div className="skeleton skeleton-line" style={{ width: '100%', marginBottom: 6 }} />
+                      <div className="skeleton skeleton-line" style={{ width: '80%' }} />
+                    </div>
+                  ))}
+                </div>
+              )
+            )}
+
+            {newsTab === 'twitter' && <TwitterFeed />}
+          </div>
         </>
       )}
 
