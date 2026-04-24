@@ -17,6 +17,7 @@ import requests
 FINNHUB_KEY = os.environ['FINNHUB_KEY']
 ANTHROPIC_KEY = os.environ['ANTHROPIC_API_KEY']
 
+
 def fetch_news():
     url = f'https://finnhub.io/api/v1/news?category=general&token={FINNHUB_KEY}'
     r = requests.get(url, timeout=15)
@@ -24,32 +25,26 @@ def fetch_news():
     items = r.json()[:20]
     return [f"- {item['headline']} ({item['source']})" for item in items if item.get('headline')]
 
+
 def generate_summary(headlines):
     client = anthropic.Anthropic(api_key=ANTHROPIC_KEY)
     news_block = '\n'.join(headlines)
-    prompt = f"""You are a concise financial analyst. Based on these recent market news headlines, write exactly 5 sentences covering:
-1. Overall market mood/sentiment
-2. Key macro events or economic data driving the market
-3. Notable sector or stock movements
-4. Risk factors or concerns investors are watching
-5. Short-term outlook
-
-Be factual, specific, and direct. No bullet points — just 5 flowing sentences as a paragraph.
-
-Recent headlines:
-{news_block}"""
+    prompt = (
+        "You are a concise financial analyst. Based on these recent market news headlines, "
+        "write exactly 5 sentences as a single paragraph covering: overall market mood, "
+        "key macro events driving the market, notable sector or stock movements, "
+        "main risk factors investors are watching, and the short-term outlook. "
+        "Be factual, specific, and direct. No bullet points.\n\n"
+        f"Recent headlines:\n{news_block}"
+    )
 
     message = client.messages.create(
-        model='claude-opus-4-7',
+        model='claude-sonnet-4-6',
         max_tokens=700,
-        thinking={'type': 'adaptive'},
         messages=[{'role': 'user', 'content': prompt}],
     )
-    # Extract the text block (skip thinking blocks)
-    for block in message.content:
-        if block.type == 'text':
-            return block.text.strip()
-    raise ValueError('No text in Claude response')
+    return message.content[0].text.strip()
+
 
 if __name__ == '__main__':
     try:
