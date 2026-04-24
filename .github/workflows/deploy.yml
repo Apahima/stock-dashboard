@@ -31,6 +31,10 @@ jobs:
 
       - name: Build
         run: npm run build
+        env:
+          VITE_FINNHUB_KEY: ${{ secrets.VITE_FINNHUB_KEY }}
+          VITE_APP_USER: ${{ secrets.VITE_APP_USER }}
+          VITE_APP_PASS: ${{ secrets.VITE_APP_PASS }}
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
