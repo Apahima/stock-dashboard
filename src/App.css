@@ -272,6 +272,220 @@ body {
   margin-bottom: 20px;
 }
 
+/* Modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 16px;
+}
+
+.modal {
+  background: #1e2130;
+  border: 1px solid #2d3448;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 480px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid #2d3448;
+  flex-shrink: 0;
+}
+
+.modal-header h2 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  color: #64748b;
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.modal-close:hover { color: #e2e8f0; background: #2d3448; }
+
+.modal-search-wrap {
+  position: relative;
+  padding: 16px 24px 0;
+  flex-shrink: 0;
+}
+
+.modal-search {
+  width: 100%;
+  padding: 11px 40px 11px 14px;
+  background: #0f1117;
+  border: 1px solid #2d3448;
+  border-radius: 8px;
+  color: #e2e8f0;
+  font-size: 0.9rem;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.modal-search:focus { border-color: #38bdf8; }
+
+.search-spinner {
+  position: absolute;
+  right: 36px;
+  top: 50%;
+  transform: translateY(-30%);
+  color: #64748b;
+  font-size: 1rem;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin { to { transform: translateY(-30%) rotate(360deg); } }
+
+.search-err {
+  margin: 8px 24px 0;
+  font-size: 0.78rem;
+  color: #fca5a5;
+}
+
+.search-results {
+  margin: 10px 24px 0;
+  background: #0f1117;
+  border: 1px solid #2d3448;
+  border-radius: 8px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.search-result-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid #1e2130;
+  gap: 12px;
+}
+
+.search-result-row:last-child { border-bottom: none; }
+
+.sr-symbol {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #fff;
+  margin-right: 8px;
+}
+
+.sr-name {
+  font-size: 0.75rem;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+
+.btn-sm {
+  padding: 5px 12px;
+  font-size: 0.78rem;
+  flex-shrink: 0;
+}
+
+.btn-disabled {
+  background: #2d3448 !important;
+  color: #64748b !important;
+  cursor: default;
+}
+
+.modal-list-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #64748b;
+  padding: 16px 24px 8px;
+  flex-shrink: 0;
+}
+
+.modal-list {
+  overflow-y: auto;
+  flex: 1;
+  padding: 0 24px 8px;
+}
+
+.modal-list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 0;
+  border-bottom: 1px solid #2d3448;
+  gap: 12px;
+}
+
+.modal-list-row:last-child { border-bottom: none; }
+
+.remove-btn {
+  background: none;
+  border: 1px solid #2d3448;
+  color: #64748b;
+  font-size: 0.8rem;
+  cursor: pointer;
+  padding: 3px 8px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.remove-btn:hover { border-color: #ef4444; color: #ef4444; }
+
+.modal-footer {
+  display: flex;
+  justify-content: space-between;
+  padding: 16px 24px;
+  border-top: 1px solid #2d3448;
+  flex-shrink: 0;
+  gap: 12px;
+}
+
+/* Watchlist section header */
+.section-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0;
+}
+
+.stock-count {
+  color: #64748b;
+  font-weight: 400;
+}
+
+.edit-watchlist-btn {
+  font-size: 0.75rem;
+  color: #38bdf8;
+  background: none;
+  border: 1px solid #2d3448;
+  border-radius: 6px;
+  padding: 4px 12px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.edit-watchlist-btn:hover { border-color: #38bdf8; }
+
 /* Login */
 .login-wrap {
   min-height: 100vh;

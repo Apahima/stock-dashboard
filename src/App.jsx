@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import './App.css'
 
 const APP_USER = import.meta.env.VITE_APP_USER || 'admin'
@@ -11,7 +11,7 @@ const INDICES = [
   { symbol: 'IWM', label: 'Russell 2000'  },
 ]
 
-const STOCKS = [
+const DEFAULT_STOCKS = [
   { symbol: 'AAPL',  name: 'Apple' },
   { symbol: 'MSFT',  name: 'Microsoft' },
   { symbol: 'NVDA',  name: 'NVIDIA' },
@@ -25,6 +25,20 @@ const STOCKS = [
   { symbol: 'WMT',   name: 'Walmart' },
   { symbol: 'XOM',   name: 'Exxon Mobil' },
 ]
+
+function loadStocks() {
+  try {
+    const saved = localStorage.getItem('watchlist')
+    if (saved) return JSON.parse(saved)
+  } catch {}
+  return DEFAULT_STOCKS
+}
+
+function saveStocks(list) {
+  localStorage.setItem('watchlist', JSON.stringify(list))
+}
+
+// ─────────────────── helpers ────────────────────────────────────────────────
 
 function isMarketOpen() {
   const et   = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/New_York' }))
@@ -58,11 +72,7 @@ function ChangeLabel({ d, dp }) {
   if (d == null) return <span className="neutral">—</span>
   const cls   = d >= 0 ? 'positive' : 'negative'
   const arrow = d >= 0 ? '▲' : '▼'
-  return (
-    <span className={cls}>
-      {arrow} {fmt(Math.abs(d))} ({fmt(Math.abs(dp))}%)
-    </span>
-  )
+  return <span className={cls}>{arrow} {fmt(Math.abs(d))} ({fmt(Math.abs(dp))}%)</span>
 }
 
 function SkeletonCard() {
@@ -76,7 +86,137 @@ function SkeletonCard() {
   )
 }
 
-// ── Login screen ──────────────────────────────────────────────────────────────
+// ─────────────────── Manage Stocks Modal ────────────────────────────────────
+
+function ManageStocksModal({ stocks, apiKey, onSave, onClose }) {
+  const [list, setList]           = useState(stocks)
+  const [query, setQuery]         = useState('')
+  const [results, setResults]     = useState([])
+  const [searching, setSearching] = useState(false)
+  const [searchErr, setSearchErr] = useState('')
+  const debounceRef               = useRef(null)
+
+  // Search Finnhub symbol lookup
+  useEffect(() => {
+    const q = query.trim().toUpperCase()
+    if (!q) { setResults([]); setSearchErr(''); return }
+
+    clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(async () => {
+      setSearching(true)
+      setSearchErr('')
+      try {
+        const res  = await fetch(`https://finnhub.io/api/v1/search?q=${encodeURIComponent(q)}&token=${apiKey}`)
+        const data = await res.json()
+        // Filter to US common stocks only
+        const filtered = (data.result || [])
+          .filter(r => r.type === 'Common Stock' && !r.symbol.includes('.'))
+          .slice(0, 6)
+        setResults(filtered)
+      } catch {
+        setSearchErr('Search failed.')
+      } finally {
+        setSearching(false)
+      }
+    }, 350)
+  }, [query, apiKey])
+
+  const addStock = (symbol, name) => {
+    if (list.find(s => s.symbol === symbol)) return
+    setList(l => [...l, { symbol, name: name || symbol }])
+    setQuery('')
+    setResults([])
+  }
+
+  const removeStock = (symbol) => setList(l => l.filter(s => s.symbol !== symbol))
+
+  const handleSave = () => {
+    saveStocks(list)
+    onSave(list)
+    onClose()
+  }
+
+  const handleReset = () => setList(DEFAULT_STOCKS)
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal">
+        <div className="modal-header">
+          <h2>Manage Watchlist</h2>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+
+        {/* Search */}
+        <div className="modal-search-wrap">
+          <input
+            className="modal-search"
+            type="text"
+            placeholder="Search symbol or company name…"
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            autoFocus
+          />
+          {searching && <span className="search-spinner">↻</span>}
+        </div>
+
+        {searchErr && <div className="search-err">{searchErr}</div>}
+
+        {/* Search results */}
+        {results.length > 0 && (
+          <div className="search-results">
+            {results.map(r => {
+              const already = !!list.find(s => s.symbol === r.symbol)
+              return (
+                <div key={r.symbol} className="search-result-row">
+                  <div>
+                    <span className="sr-symbol">{r.symbol}</span>
+                    <span className="sr-name">{r.description}</span>
+                  </div>
+                  <button
+                    className={`btn btn-sm ${already ? 'btn-disabled' : ''}`}
+                    disabled={already}
+                    onClick={() => addStock(r.symbol, r.description)}
+                  >
+                    {already ? 'Added' : '+ Add'}
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {/* Current watchlist */}
+        <div className="modal-list-label">Your watchlist ({list.length} stocks)</div>
+        <div className="modal-list">
+          {list.map(({ symbol, name }) => (
+            <div key={symbol} className="modal-list-row">
+              <div>
+                <span className="sr-symbol">{symbol}</span>
+                <span className="sr-name">{name}</span>
+              </div>
+              <button
+                className="remove-btn"
+                onClick={() => removeStock(symbol)}
+                title="Remove"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+
+        {/* Footer */}
+        <div className="modal-footer">
+          <button className="btn btn-outline" onClick={handleReset}>Reset to default</button>
+          <button className="btn" onClick={handleSave}>Save &amp; Reload</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────── Login ───────────────────────────────────────────────────
+
 function LoginScreen({ onLogin }) {
   const [user, setUser]   = useState('')
   const [pass, setPass]   = useState('')
@@ -84,12 +224,8 @@ function LoginScreen({ onLogin }) {
   const [show, setShow]   = useState(false)
 
   const submit = () => {
-    if (user.trim() === APP_USER && pass === APP_PASS) {
-      onLogin()
-    } else {
-      setError('Incorrect username or password.')
-      setPass('')
-    }
+    if (user.trim() === APP_USER && pass === APP_PASS) { onLogin() }
+    else { setError('Incorrect username or password.'); setPass('') }
   }
 
   return (
@@ -124,17 +260,17 @@ function LoginScreen({ onLogin }) {
   )
 }
 
-// ── API key setup (one-time per device, shown after login) ────────────────────
+// ─────────────────── API Key setup ───────────────────────────────────────────
+
 function ApiKeyScreen({ onSave }) {
-  const [key, setKey]     = useState('')
-  const [error, setError] = useState('')
+  const [key, setKey]         = useState('')
+  const [error, setError]     = useState('')
   const [testing, setTesting] = useState(false)
 
   const verify = async () => {
     const k = key.trim()
     if (!k) return
-    setTesting(true)
-    setError('')
+    setTesting(true); setError('')
     try {
       const res  = await fetch(`https://finnhub.io/api/v1/quote?symbol=AAPL&token=${k}`)
       const data = await res.json()
@@ -155,15 +291,13 @@ function ApiKeyScreen({ onSave }) {
         <h1 className="login-title" style={{ fontSize: '1.25rem' }}>One-time Setup</h1>
         <p className="login-sub">
           Enter your free <a href="https://finnhub.io/register" target="_blank" rel="noreferrer"
-            style={{ color: '#38bdf8' }}>Finnhub API key</a> to load stock data.
-          It saves in this browser — you won't need it again on this device.
+            style={{ color: '#38bdf8' }}>Finnhub API key</a>. It saves in this browser — you won't need it again on this device.
         </p>
         {error && <div className="login-error">{error}</div>}
         <div className="login-field">
           <label>Finnhub API Key</label>
           <input type="text" placeholder="e.g. d7lf361r01qm7o0bk5n0"
-            value={key}
-            onChange={e => setKey(e.target.value)}
+            value={key} onChange={e => setKey(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && verify()}
             style={{ fontFamily: 'monospace', letterSpacing: '0.05em' }} />
         </div>
@@ -175,19 +309,18 @@ function ApiKeyScreen({ onSave }) {
   )
 }
 
-// ── Sentiment cards ───────────────────────────────────────────────────────────
+// ─────────────────── Sentiment cards ────────────────────────────────────────
+
 function FearGreedCard({ data, error }) {
   if (error) return (
     <div className="sentiment-card">
       <div className="section-title" style={{ marginBottom: 8 }}>Fear &amp; Greed Index</div>
       <p className="neutral" style={{ fontSize: '0.82rem' }}>
         CNN API unavailable.&nbsp;
-        <a href="https://edition.cnn.com/markets/fear-and-greed" target="_blank" rel="noreferrer"
-          style={{ color: '#38bdf8' }}>View on CNN →</a>
+        <a href="https://edition.cnn.com/markets/fear-and-greed" target="_blank" rel="noreferrer" style={{ color: '#38bdf8' }}>View on CNN →</a>
       </p>
     </div>
   )
-
   if (!data) return (
     <div className="sentiment-card">
       <div className="skeleton skeleton-line" style={{ width: '55%', marginBottom: 12 }} />
@@ -196,7 +329,6 @@ function FearGreedCard({ data, error }) {
       <div className="skeleton skeleton-line" style={{ width: '60%' }} />
     </div>
   )
-
   const color = fgColor(data.score)
   return (
     <div className="sentiment-card">
@@ -233,17 +365,16 @@ function AaiiCard({ data }) {
       <p style={{ fontSize: '0.82rem', color: '#94a3b8', lineHeight: 1.6 }}>
         Updated weekly every Thursday via GitHub Actions.
         <br />
-        <a href="https://www.aaii.com/sentimentsurvey" target="_blank" rel="noreferrer"
-          style={{ color: '#38bdf8' }}>View latest at AAII.com →</a>
+        <a href="https://www.aaii.com/sentimentsurvey" target="_blank" rel="noreferrer" style={{ color: '#38bdf8' }}>
+          View latest at AAII.com →
+        </a>
       </p>
     </div>
   )
-
   const total   = data.bullish + data.neutral + data.bearish
   const bullPct = +(data.bullish / total * 100).toFixed(1)
   const neutPct = +(data.neutral / total * 100).toFixed(1)
   const bearPct = +(data.bearish / total * 100).toFixed(1)
-
   return (
     <div className="sentiment-card">
       <div className="section-title" style={{ marginBottom: 6 }}>AAII Sentiment Survey</div>
@@ -259,34 +390,31 @@ function AaiiCard({ data }) {
         <span className="negative">▼ Bear {data.bearish}%</span>
       </div>
       {data.historicalAvg && (
-        <div className="aaii-avg">
-          Long-run avg · Bull {data.historicalAvg.bullish}% · Bear {data.historicalAvg.bearish}%
-        </div>
+        <div className="aaii-avg">Long-run avg · Bull {data.historicalAvg.bullish}% · Bear {data.historicalAvg.bearish}%</div>
       )}
     </div>
   )
 }
 
-// ── Main app ──────────────────────────────────────────────────────────────────
+// ─────────────────── Main App ────────────────────────────────────────────────
+
 export default function App() {
-  const [loggedIn, setLoggedIn] = useState(() => sessionStorage.getItem('auth') === '1')
-  const [apiKey, setApiKey]     = useState(() => localStorage.getItem('finnhub_key') || '')
-  const [quotes, setQuotes]     = useState({})
-  const [news, setNews]         = useState([])
-  const [loading, setLoading]   = useState(false)
-  const [error, setError]       = useState('')
+  const [loggedIn, setLoggedIn]   = useState(() => sessionStorage.getItem('auth') === '1')
+  const [apiKey, setApiKey]       = useState(() => localStorage.getItem('finnhub_key') || '')
+  const [stocks, setStocks]       = useState(loadStocks)
+  const [showManage, setShowManage] = useState(false)
+  const [quotes, setQuotes]       = useState({})
+  const [news, setNews]           = useState([])
+  const [loading, setLoading]     = useState(false)
+  const [error, setError]         = useState('')
   const [lastUpdated, setLastUpdated] = useState(null)
   const [fearGreed, setFearGreed]     = useState(null)
   const [fgError, setFgError]         = useState(false)
   const [aaii, setAaii]               = useState(null)
 
-  const handleLogin = () => { sessionStorage.setItem('auth', '1'); setLoggedIn(true) }
-  const handleLogout = () => {
-    sessionStorage.removeItem('auth')
-    setLoggedIn(false)
-  }
+  const handleLogin  = () => { sessionStorage.setItem('auth', '1'); setLoggedIn(true) }
+  const handleLogout = () => { sessionStorage.removeItem('auth'); setLoggedIn(false) }
 
-  // Fear & Greed — CNN public API, no key needed
   useEffect(() => {
     if (!loggedIn || !apiKey) return
     fetch('https://production.dataviz.cnn.io/index/fearandgreed/graphdata')
@@ -305,7 +433,6 @@ export default function App() {
       .catch(() => setFgError(true))
   }, [loggedIn, apiKey])
 
-  // AAII — cached JSON updated weekly by GitHub Actions
   useEffect(() => {
     if (!loggedIn || !apiKey) return
     fetch('/stock-dashboard/aaii.json')
@@ -315,20 +442,22 @@ export default function App() {
   }, [loggedIn, apiKey])
 
   const fetchQuote = useCallback(async (symbol) => {
-    const res = await fetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${apiKey}`)
+    const res  = await fetch(`https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${apiKey}`)
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const data = await res.json()
     if (data.error) throw new Error(data.error)
     return data
   }, [apiKey])
 
-  const fetchAll = useCallback(async () => {
+  const fetchAll = useCallback(async (stockList) => {
     if (!apiKey) return
-    setLoading(true)
-    setError('')
+    setLoading(true); setError('')
     try {
-      const allSymbols = [...INDICES.map(i => i.symbol), ...STOCKS.map(s => s.symbol)]
-      const results    = await Promise.allSettled(allSymbols.map(s => fetchQuote(s)))
+      const allSymbols = [
+        ...INDICES.map(i => i.symbol),
+        ...(stockList || stocks).map(s => s.symbol),
+      ]
+      const results = await Promise.allSettled(allSymbols.map(s => fetchQuote(s)))
       const map = {}
       allSymbols.forEach((sym, i) => {
         if (results[i].status === 'fulfilled') map[sym] = results[i].value
@@ -339,7 +468,6 @@ export default function App() {
       }
       setQuotes(map)
       setLastUpdated(new Date())
-
       const newsRes = await fetch(`https://finnhub.io/api/v1/news?category=general&token=${apiKey}`)
       if (newsRes.ok) setNews((await newsRes.json()).slice(0, 9))
     } catch (e) {
@@ -347,18 +475,31 @@ export default function App() {
     } finally {
       setLoading(false)
     }
-  }, [apiKey, fetchQuote])
+  }, [apiKey, stocks, fetchQuote])
 
-  useEffect(() => { if (loggedIn && apiKey) fetchAll() }, [loggedIn, apiKey, fetchAll])
+  useEffect(() => { if (loggedIn && apiKey) fetchAll() }, [loggedIn, apiKey])
 
-  // ── Render ────────────────────────────────────────────────────────────────
-  if (!loggedIn)        return <LoginScreen onLogin={handleLogin} />
-  if (!apiKey)          return <ApiKeyScreen onSave={setApiKey} />
+  const handleStocksSaved = (newList) => {
+    setStocks(newList)
+    fetchAll(newList)
+  }
+
+  if (!loggedIn) return <LoginScreen onLogin={handleLogin} />
+  if (!apiKey)   return <ApiKeyScreen onSave={setApiKey} />
 
   const open = isMarketOpen()
 
   return (
     <div className="app">
+      {showManage && (
+        <ManageStocksModal
+          stocks={stocks}
+          apiKey={apiKey}
+          onSave={handleStocksSaved}
+          onClose={() => setShowManage(false)}
+        />
+      )}
+
       <div className="header">
         <h1>📈 <span>Stock</span> Dashboard</h1>
         <div className="header-right">
@@ -367,8 +508,11 @@ export default function App() {
             {open ? 'Market Open' : 'Market Closed'}
             {lastUpdated && ` · ${lastUpdated.toLocaleTimeString()}`}
           </div>
-          <button className="btn" onClick={fetchAll} disabled={loading}>
+          <button className="btn" onClick={() => fetchAll()} disabled={loading}>
             {loading ? 'Loading…' : '↻ Refresh'}
+          </button>
+          <button className="btn btn-outline" onClick={() => setShowManage(true)}>
+            ☰ Watchlist
           </button>
           <button className="btn btn-outline" onClick={() => { localStorage.removeItem('finnhub_key'); setApiKey('') }}>
             ⚙ Key
@@ -379,13 +523,11 @@ export default function App() {
 
       {error && <div className="error-banner">⚠ {error}</div>}
 
-      {/* Sentiment */}
       <div className="sentiment-row">
         <FearGreedCard data={fearGreed} error={fgError} />
         <AaiiCard data={aaii} />
       </div>
 
-      {/* Indices */}
       <div className="section-title">Major Indices</div>
       <div className="indices-grid">
         {INDICES.map(({ symbol, label }) => {
@@ -409,11 +551,17 @@ export default function App() {
         })}
       </div>
 
-      {/* Stocks */}
       <div className="stocks-section">
-        <div className="section-title">Top Stocks</div>
-        <div className="stocks-grid">
-          {STOCKS.map(({ symbol, name }) => {
+        <div className="section-title-row">
+          <div className="section-title" style={{ marginBottom: 0 }}>
+            Watchlist <span className="stock-count">({stocks.length})</span>
+          </div>
+          <button className="edit-watchlist-btn" onClick={() => setShowManage(true)}>
+            + Edit
+          </button>
+        </div>
+        <div className="stocks-grid" style={{ marginTop: 12 }}>
+          {stocks.map(({ symbol, name }) => {
             const q = quotes[symbol]
             if (!q) return <SkeletonCard key={symbol} />
             return (
@@ -428,7 +576,6 @@ export default function App() {
         </div>
       </div>
 
-      {/* News */}
       {news.length > 0 && (
         <div className="news-section">
           <div className="section-title">Market News</div>
