@@ -21,7 +21,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install dependencies
-        run: pip install requests xlrd openpyxl
+        run: pip install requests beautifulsoup4 lxml
 
       - name: Fetch AAII data
         run: python scripts/fetch_aaii.py

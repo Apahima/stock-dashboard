@@ -1,112 +1,114 @@
 """
-Fetches AAII weekly sentiment survey data and saves it to public/aaii.json.
-Run via GitHub Actions every Thursday after AAII publishes (~noon ET).
-AAII serves an old .xls file, so we use xlrd to parse it.
+Scrapes AAII weekly sentiment data from the public survey page.
+The Excel download requires login, but current-week data is visible publicly.
 """
 import json
-import io
+import re
 import sys
 from datetime import datetime
 import requests
-import xlrd
+from bs4 import BeautifulSoup
 
 HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
                   '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.9',
     'Referer': 'https://www.aaii.com/',
-    'Accept': 'application/vnd.ms-excel,application/octet-stream,*/*',
 }
 
-def to_pct(v):
-    if v is None or v == '':
-        return 0.0
-    v = float(v)
-    return round(v * 100, 1) if abs(v) <= 1.0 else round(v, 1)
+HISTORICAL_AVG = {'bullish': 37.5, 'bearish': 31.0}  # Long-run AAII averages
+
+
+def pct(s):
+    """Parse a percentage string like '38.3' or '38.3%' to float."""
+    s = str(s).strip().replace('%', '')
+    try:
+        return round(float(s), 1)
+    except ValueError:
+        return None
+
 
 def fetch():
     r = requests.get(
-        'https://www.aaii.com/sentimentsurvey/sent_results',
+        'https://www.aaii.com/sentimentsurvey',
         headers=HEADERS,
         timeout=30,
-        allow_redirects=True,
     )
     r.raise_for_status()
 
-    content = r.content
-    print(f"Response size: {len(content)} bytes, Content-Type: {r.headers.get('Content-Type','?')}")
+    soup = BeautifulSoup(r.content, 'html.parser')
+    text = soup.get_text(separator=' ')
 
-    # Detect format
-    if content[:2] == b'PK':
-        # xlsx (zip-based) — unlikely but handle it
-        import openpyxl
-        wb = openpyxl.load_workbook(io.BytesIO(content), data_only=True)
-        ws = wb.active
-        rows = [tuple(c.value for c in row) for row in ws.iter_rows()]
-    else:
-        # Assume old .xls format
-        wb = xlrd.open_workbook(file_contents=content)
-        ws = wb.sheet_by_index(0)
-        rows = [ws.row_values(i) for i in range(ws.nrows)]
+    print(f'Page length: {len(text)} chars')
 
-    # Find header row containing Bullish / Bearish columns
-    header_idx = None
-    for i, row in enumerate(rows):
-        labels = [str(c or '').strip().lower() for c in row]
-        if any('bullish' in l for l in labels) and any('bearish' in l for l in labels):
-            header_idx = i
+    # ── Strategy 1: find a table row with Bull/Neutral/Bear numbers ──────────
+    bull = neut = bear = None
+    date_str = None
+
+    # Try to find structured table data
+    for table in soup.find_all('table'):
+        rows = table.find_all('tr')
+        for row in rows:
+            cells = [td.get_text(strip=True) for td in row.find_all(['td', 'th'])]
+            row_text = ' '.join(cells).lower()
+            if 'bullish' in row_text and '%' in row_text:
+                nums = re.findall(r'(\d+\.?\d*)%', row.get_text())
+                if len(nums) >= 3:
+                    bull, neut, bear = pct(nums[0]), pct(nums[1]), pct(nums[2])
+                    print(f'Found via table: bull={bull} neut={neut} bear={bear}')
+                    break
+        if bull is not None:
             break
 
-    if header_idx is None:
-        raise ValueError('Could not find header row in AAII spreadsheet')
+    # ── Strategy 2: regex scan the full page text ─────────────────────────────
+    if bull is None:
+        # Look for sequences like: Bullish 38.3% Neutral 32.1% Bearish 29.6%
+        m = re.search(
+            r'[Bb]ullish[^\d]*(\d+\.?\d+)%[^Nn]*[Nn]eutral[^\d]*(\d+\.?\d+)%[^Bb]*[Bb]earish[^\d]*(\d+\.?\d+)%',
+            text,
+        )
+        if m:
+            bull, neut, bear = pct(m.group(1)), pct(m.group(2)), pct(m.group(3))
+            print(f'Found via regex: bull={bull} neut={neut} bear={bear}')
 
-    headers = [str(c or '').strip().lower() for c in rows[header_idx]]
-    print(f"Headers: {headers}")
+    # ── Strategy 3: individual keyword search ─────────────────────────────────
+    if bull is None:
+        def find_pct(keyword):
+            m = re.search(rf'{keyword}[^%\d]{{0,30}}(\d+\.?\d+)%', text, re.IGNORECASE)
+            return pct(m.group(1)) if m else None
 
-    def col(keyword, exclude='avg'):
-        return next(
-            i for i, h in enumerate(headers)
-            if keyword in h and exclude not in h
+        bull = find_pct('bullish')
+        neut = find_pct('neutral')
+        bear = find_pct('bearish')
+        print(f'Found via individual search: bull={bull} neut={neut} bear={bear}')
+
+    if bull is None or neut is None or bear is None:
+        raise ValueError(
+            f'Could not extract sentiment data from page. '
+            f'Got: bull={bull}, neut={neut}, bear={bear}'
         )
 
-    date_col = col('date')
-    bull_col = col('bullish')
-    neut_col = col('neutral')
-    bear_col = col('bearish')
-
-    # Most recent data row
-    recent   = rows[header_idx + 1]
-    date_raw = recent[date_col]
-
-    # xlrd returns dates as floats; convert to datetime
-    if isinstance(date_raw, float):
-        date_tuple = xlrd.xldate_as_tuple(date_raw, wb.datemode)
-        date_val   = datetime(*date_tuple[:3])
-        date_str   = date_val.strftime('%B %d, %Y')
-    elif hasattr(date_raw, 'strftime'):
-        date_str = date_raw.strftime('%B %d, %Y')
+    # ── Date: find "week ending" or similar phrase ────────────────────────────
+    date_match = re.search(
+        r'[Ww]eek\s+[Ee]nding\s+([\w]+\s+\d+,?\s*\d{4})',
+        text,
+    )
+    if date_match:
+        date_str = date_match.group(1).strip()
     else:
-        date_str = str(date_raw).strip()
-
-    bull = to_pct(recent[bull_col])
-    neut = to_pct(recent[neut_col])
-    bear = to_pct(recent[bear_col])
-
-    # 8-week historical average
-    hist     = rows[header_idx + 1: header_idx + 9]
-    avg_bull = round(sum(to_pct(r[bull_col]) for r in hist) / len(hist), 1)
-    avg_bear = round(sum(to_pct(r[bear_col]) for r in hist) / len(hist), 1)
+        # Fall back to today's date
+        date_str = datetime.utcnow().strftime('%B %d, %Y')
 
     return {
         'date':     date_str,
         'bullish':  bull,
         'neutral':  neut,
         'bearish':  bear,
-        'historicalAvg': {
-            'bullish': avg_bull,
-            'bearish': avg_bear,
-        },
+        'historicalAvg': HISTORICAL_AVG,
         'updatedAt': datetime.utcnow().isoformat() + 'Z',
     }
+
 
 if __name__ == '__main__':
     try:
@@ -114,7 +116,7 @@ if __name__ == '__main__':
         out_path = 'public/aaii.json'
         with open(out_path, 'w') as f:
             json.dump(data, f, indent=2)
-        print(f'Saved AAII data to {out_path}:')
+        print(f'\nSaved to {out_path}:')
         print(json.dumps(data, indent=2))
     except Exception as e:
         import traceback
