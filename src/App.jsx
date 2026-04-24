@@ -681,7 +681,7 @@ export default function App() {
   // AAII
   useEffect(() => {
     if (!loggedIn || !apiKey) return
-    fetch('/stock-dashboard/aaii.json')
+    fetch(`/stock-dashboard/aaii.json?t=${Date.now()}`)
       .then(r => { if (!r.ok) throw new Error(); return r.json() })
       .then(setAaii).catch(() => {})
   }, [loggedIn, apiKey])
@@ -689,7 +689,7 @@ export default function App() {
   // Market Summary
   useEffect(() => {
     if (!loggedIn || !apiKey) return
-    fetch('/stock-dashboard/market-summary.json')
+    fetch(`/stock-dashboard/market-summary.json?t=${Date.now()}`)
       .then(r => { if (!r.ok) throw new Error(); return r.json() })
       .then(setMarketSummary).catch(() => {})
   }, [loggedIn, apiKey])
