@@ -1,23 +1,14 @@
 """
-Scrapes AAII weekly sentiment data from the public survey page.
-Looks for date/percentage rows like "4/22/2026  46.0%  19.5%  34.4%"
-which appear in the data table, not in the historical-average section.
+Fetches AAII weekly sentiment data using a headless browser (Playwright)
+so that JavaScript-rendered content is fully available.
 """
 import json
 import re
 import sys
 from datetime import datetime
-import requests
-from bs4 import BeautifulSoup
 
-HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
-                  '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-    'Accept-Language': 'en-US,en;q=0.9',
-}
+from playwright.sync_api import sync_playwright
 
-# Official AAII long-run averages (shown on their site)
 HISTORICAL_AVG = {'bullish': 37.5, 'neutral': 31.5, 'bearish': 31.0}
 
 
@@ -26,39 +17,40 @@ def pct(s):
 
 
 def fetch():
-    r = requests.get('https://www.aaii.com/sentimentsurvey', headers=HEADERS, timeout=30)
-    r.raise_for_status()
+    with sync_playwright() as p:
+        browser = p.chromium.launch(args=['--no-sandbox', '--disable-dev-shm-usage'])
+        page = browser.new_page(user_agent=(
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+            '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        ))
+        page.goto('https://www.aaii.com/sentimentsurvey',
+                  wait_until='networkidle', timeout=30000)
+        page.wait_for_timeout(2000)          # let any late renders finish
+        text = page.inner_text('body')
+        html = page.content()
+        browser.close()
 
-    soup = BeautifulSoup(r.content, 'html.parser')
-    text = soup.get_text(separator=' ')
+    print(f'Rendered text length: {len(text)} chars')
 
-    print(f'Page length: {len(text)} chars')
-
-    # ── Strategy 1: find rows with a MM/DD/YYYY date followed by 3 percentages ─
-    # This matches rows from the weekly data table, not the historical average text.
-    # Example: "4/22/2026  46.0%  19.5%  34.4%"
-    date_row_pattern = re.compile(
-        r'(\d{1,2}/\d{1,2}/\d{4})'           # date like 4/22/2026
-        r'[^\d%]{0,20}'                        # small gap (spaces, newlines)
-        r'(\d+\.?\d*)%'                        # bullish %
+    # ── Strategy 1: date + 3 percentages in the same line/block ──────────────
+    # Matches rows like: "4/22/2026  46.0%  19.5%  34.4%"
+    date_row = re.compile(
+        r'(\d{1,2}/\d{1,2}/\d{4})'
+        r'[^\d%]{0,30}'
+        r'(\d+\.?\d*)%'
         r'[^\d%]{0,20}'
-        r'(\d+\.?\d*)%'                        # neutral %
+        r'(\d+\.?\d*)%'
         r'[^\d%]{0,20}'
-        r'(\d+\.?\d*)%'                        # bearish %
+        r'(\d+\.?\d*)%'
     )
-    matches = date_row_pattern.findall(text)
-
+    matches = date_row.findall(text)
     if matches:
-        # First match = most recent week
         date_raw, bull, neut, bear = matches[0]
-        print(f'Found via date-row pattern: {date_raw} | bull={bull} neut={neut} bear={bear}')
-
-        # Format date: 4/22/2026 → April 22, 2026
+        print(f'Found: {date_raw}  bull={bull}  neut={neut}  bear={bear}')
         try:
             date_str = datetime.strptime(date_raw, '%m/%d/%Y').strftime('%B %d, %Y')
         except ValueError:
             date_str = date_raw
-
         return {
             'date':          date_str,
             'bullish':       pct(bull),
@@ -68,36 +60,33 @@ def fetch():
             'updatedAt':     datetime.utcnow().isoformat() + 'Z',
         }
 
-    # ── Strategy 2: parse tables directly ────────────────────────────────────
-    print('Date-row pattern not found, trying table parse…')
+    # ── Strategy 2: look for the table in raw HTML ────────────────────────────
+    from bs4 import BeautifulSoup
+    soup = BeautifulSoup(html, 'lxml')
     for table in soup.find_all('table'):
-        headers_row = table.find('tr')
-        if not headers_row:
+        header = table.find('tr')
+        if not header or ('bullish' not in header.get_text().lower()):
             continue
-        header_text = headers_row.get_text().lower()
-        if 'bullish' not in header_text and 'bearish' not in header_text:
-            continue
-
-        # Found the right table — grab first data row
-        data_rows = table.find_all('tr')[1:]
-        for row in data_rows:
+        for row in table.find_all('tr')[1:]:
             cells = [td.get_text(strip=True) for td in row.find_all('td')]
-            nums  = [c.replace('%', '') for c in cells if re.match(r'^\d+\.?\d*%?$', c)]
             dates = [c for c in cells if re.match(r'\d{1,2}/\d{1,2}/\d{4}', c)]
-            if len(nums) >= 3 and dates:
-                bull, neut, bear = nums[0], nums[1], nums[2]
+            pcts  = [c.replace('%','') for c in cells if re.match(r'^\d+\.?\d*%$', c)]
+            if dates and len(pcts) >= 3:
                 date_str = datetime.strptime(dates[0], '%m/%d/%Y').strftime('%B %d, %Y')
-                print(f'Found via table: {date_str} | bull={bull} neut={neut} bear={bear}')
+                print(f'Found via table: {date_str}  {pcts[:3]}')
                 return {
                     'date':          date_str,
-                    'bullish':       pct(bull),
-                    'neutral':       pct(neut),
-                    'bearish':       pct(bear),
+                    'bullish':       pct(pcts[0]),
+                    'neutral':       pct(pcts[1]),
+                    'bearish':       pct(pcts[2]),
                     'historicalAvg': HISTORICAL_AVG,
                     'updatedAt':     datetime.utcnow().isoformat() + 'Z',
                 }
 
-    raise ValueError('Could not extract current-week AAII sentiment data from page.')
+    # Print first 2000 chars of rendered text to help debug
+    print('--- rendered text sample ---')
+    print(text[:2000])
+    raise ValueError('Could not extract AAII sentiment data from rendered page.')
 
 
 if __name__ == '__main__':

@@ -1,0 +1,53 @@
+name: Update AAII Data (Manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      date:
+        description: 'Week ending date (e.g. April 22, 2026)'
+        required: true
+      bullish:
+        description: 'Bullish %  (e.g. 46.0)'
+        required: true
+      neutral:
+        description: 'Neutral %  (e.g. 19.5)'
+        required: true
+      bearish:
+        description: 'Bearish %  (e.g. 34.4)'
+        required: true
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Write aaii.json
+        run: |
+          cat > public/aaii.json <<EOF
+          {
+            "date": "${{ github.event.inputs.date }}",
+            "bullish": ${{ github.event.inputs.bullish }},
+            "neutral": ${{ github.event.inputs.neutral }},
+            "bearish": ${{ github.event.inputs.bearish }},
+            "historicalAvg": { "bullish": 37.5, "neutral": 31.5, "bearish": 31.0 },
+            "updatedAt": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
+
+      - name: Commit and push
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add public/aaii.json
+          git diff --staged --quiet || git commit -m "chore: manual AAII update (${{ github.event.inputs.date }})"
+          git push
+
+      - name: Trigger site redeploy
+        run: gh workflow run deploy.yml --ref main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
