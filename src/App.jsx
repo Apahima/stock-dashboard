@@ -820,6 +820,7 @@ export default function App() {
   const [aaii, setAaii]                 = useState(null)
   const [usdIls, setUsdIls]             = useState(null)
   const [marketSummary, setMarketSummary] = useState(null)
+  const [vixData,       setVixData]       = useState(null)
 
   const handleLogin  = () => { localStorage.setItem('auth', '1'); setLoggedIn(true) }
   const handleLogout = () => { localStorage.removeItem('auth'); setLoggedIn(false) }
@@ -853,6 +854,14 @@ export default function App() {
     fetch(`/stock-dashboard/market-summary.json?t=${Date.now()}`)
       .then(r => { if (!r.ok) throw new Error(); return r.json() })
       .then(setMarketSummary).catch(() => {})
+  }, [loggedIn, apiKey])
+
+  // VIX (updated every 30 min by dedicated workflow)
+  useEffect(() => {
+    if (!loggedIn || !apiKey) return
+    fetch(`/stock-dashboard/vix.json?t=${Date.now()}`)
+      .then(r => { if (!r.ok) throw new Error(); return r.json() })
+      .then(setVixData).catch(() => {})
   }, [loggedIn, apiKey])
 
   // USD/ILS exchange rate — free, no key needed
@@ -967,8 +976,8 @@ export default function App() {
               href="https://www.tradingview.com/chart/?symbol=CBOE:VIX"
               target="_blank" rel="noreferrer">
               <div className="index-label">VIX</div>
-              {marketSummary?.vix != null
-                ? <div className="index-price">{fmt(marketSummary.vix)}</div>
+              {vixData?.value != null
+                ? <div className="index-price">{fmt(vixData.value)}</div>
                 : <div className="skeleton skeleton-price" />}
             </a>
           </div>

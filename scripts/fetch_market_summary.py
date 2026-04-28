@@ -18,18 +18,6 @@ import requests
 FINNHUB_KEY = os.environ['FINNHUB_KEY']
 ANTHROPIC_KEY = os.environ['ANTHROPIC_API_KEY']
 
-HEADERS = {'User-Agent': 'Mozilla/5.0 (compatible; stock-dashboard/1.0)'}
-
-
-def fetch_vix():
-    url = 'https://query1.finance.yahoo.com/v8/finance/chart/%5EVIX?interval=1d&range=1d'
-    r = requests.get(url, headers=HEADERS, timeout=15)
-    r.raise_for_status()
-    data = r.json()
-    price = data['chart']['result'][0]['meta']['regularMarketPrice']
-    return round(float(price), 2)
-
-
 def fetch_news():
     url = f'https://finnhub.io/api/v1/news?category=general&token={FINNHUB_KEY}'
     r = requests.get(url, timeout=15)
@@ -59,10 +47,6 @@ def generate_summary(headlines):
 
 if __name__ == '__main__':
     try:
-        print('Fetching VIX...')
-        vix = fetch_vix()
-        print(f'VIX: {vix}')
-
         print('Fetching news headlines...')
         headlines = fetch_news()
         print(f'Got {len(headlines)} headlines')
@@ -73,7 +57,6 @@ if __name__ == '__main__':
 
         out = {
             'summary': summary,
-            'vix': vix,
             'updatedAt': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
         }
         path = 'public/market-summary.json'
