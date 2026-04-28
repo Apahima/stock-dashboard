@@ -1,11 +1,8 @@
 """
-Fetches top financial news from Finnhub + VIX from Yahoo Finance,
-then asks Claude to write a 5-sentence market-sentiment summary.
-Saves result to public/market-summary.json.
+Fetches top financial news from Finnhub, asks Claude to write a
+5-sentence market-sentiment summary. Saves to public/market-summary.json.
 
-Required env vars:
-  ANTHROPIC_API_KEY
-  FINNHUB_KEY
+Required env vars: ANTHROPIC_API_KEY, FINNHUB_KEY
 """
 import json
 import os
