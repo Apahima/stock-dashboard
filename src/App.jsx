@@ -26,18 +26,28 @@ const DEFAULT_STOCKS = [
   { symbol: 'XOM',   name: 'Exxon Mobil' },
 ]
 
-// ─── localStorage helpers ────────────────────────────────────────────────────
-function loadStocks() {
-  try { const s = localStorage.getItem('watchlist'); if (s) return JSON.parse(s) } catch {}
+// ─── Multi-user auth helpers ──────────────────────────────────────────────────
+async function hashPassword(pwd) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pwd))
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('')
+}
+function getUsers() {
+  try { return JSON.parse(localStorage.getItem('app_users') || '{}') } catch { return {} }
+}
+function setUsers(u) { localStorage.setItem('app_users', JSON.stringify(u)) }
+
+// ─── Per-user localStorage helpers ───────────────────────────────────────────
+function loadStocks(userId) {
+  try { const s = localStorage.getItem(`watchlist_${userId}`); if (s) return JSON.parse(s) } catch {}
   return DEFAULT_STOCKS
 }
-function saveStocks(list) { localStorage.setItem('watchlist', JSON.stringify(list)) }
+function saveStocks(userId, list) { localStorage.setItem(`watchlist_${userId}`, JSON.stringify(list)) }
 
-function loadPortfolio() {
-  try { const s = localStorage.getItem('portfolio'); if (s) return JSON.parse(s) } catch {}
+function loadPortfolio(userId) {
+  try { const s = localStorage.getItem(`portfolio_${userId}`); if (s) return JSON.parse(s) } catch {}
   return []
 }
-function savePortfolio(list) { localStorage.setItem('portfolio', JSON.stringify(list)) }
+function savePortfolio(userId, list) { localStorage.setItem(`portfolio_${userId}`, JSON.stringify(list)) }
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 function isMarketOpen() {
@@ -154,7 +164,7 @@ function ManageStocksModal({ stocks, apiKey, onSave, onClose }) {
 
   const remove = (symbol) => setList(l => l.filter(s => s.symbol !== symbol))
 
-  const handleSave = () => { saveStocks(list); onSave(list); onClose() }
+  const handleSave = () => { onSave(list); onClose() }
 
   return (
     <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
@@ -264,40 +274,87 @@ function AddHoldingModal({ apiKey, existing, onAdd, onClose }) {
 
 // ─── Login ────────────────────────────────────────────────────────────────────
 function LoginScreen({ onLogin }) {
-  const [user, setUser]   = useState('')
-  const [pass, setPass]   = useState('')
+  const [mode,  setMode]  = useState('login') // 'login' | 'register'
+  const [email, setEmail] = useState('')
+  const [pass,  setPass]  = useState('')
+  const [conf,  setConf]  = useState('')
   const [error, setError] = useState('')
-  const [show, setShow]   = useState(false)
+  const [show,  setShow]  = useState(false)
+  const [busy,  setBusy]  = useState(false)
 
-  const submit = () => {
-    if (user.trim() === APP_USER && pass === APP_PASS) { onLogin() }
-    else { setError('Incorrect username or password.'); setPass('') }
+  const switchMode = (m) => { setMode(m); setError(''); setPass(''); setConf('') }
+
+  const signIn = async () => {
+    const id = email.trim().toLowerCase()
+    // Admin account (credentials baked into build)
+    if (id === APP_USER.toLowerCase() && pass === APP_PASS) { onLogin(APP_USER); return }
+    // Registered users
+    const users = getUsers()
+    if (!users[id]) { setError('No account found with this email.'); return }
+    const hash = await hashPassword(pass)
+    if (users[id].hash !== hash) { setError('Incorrect password.'); setPass(''); return }
+    onLogin(id)
   }
+
+  const register = async () => {
+    const id = email.trim().toLowerCase()
+    if (!id.includes('@')) { setError('Enter a valid email address.'); return }
+    if (pass.length < 6)   { setError('Password must be at least 6 characters.'); return }
+    if (pass !== conf)      { setError('Passwords do not match.'); return }
+    const users = getUsers()
+    if (users[id] || id === APP_USER.toLowerCase()) { setError('An account with this email already exists.'); return }
+    setBusy(true)
+    const hash = await hashPassword(pass)
+    users[id] = { hash, createdAt: new Date().toISOString() }
+    setUsers(users)
+    setBusy(false)
+    onLogin(id)
+  }
+
+  const submit = () => mode === 'login' ? signIn() : register()
 
   return (
     <div className="login-wrap">
       <div className="login-card">
         <div className="login-logo">📈</div>
         <h1 className="login-title">Stock Dashboard</h1>
-        <p className="login-sub">Sign in to access your market data</p>
+        <p className="login-sub">{mode === 'login' ? 'Sign in to access your market data' : 'Create your personal account'}</p>
+
         {error && <div className="login-error">{error}</div>}
+
         <div className="login-field">
-          <label>Username</label>
-          <input type="text" placeholder="Enter username" value={user} autoComplete="username"
-            onChange={e => setUser(e.target.value)} onKeyDown={e => e.key === 'Enter' && submit()} />
+          <label>Email</label>
+          <input type="email" placeholder="you@example.com" value={email} autoComplete="email"
+            onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key === 'Enter' && submit()} />
         </div>
         <div className="login-field">
           <label>Password</label>
           <div className="pass-wrap">
             <input type={show ? 'text' : 'password'} placeholder="Enter password" value={pass}
-              autoComplete="current-password"
+              autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
               onChange={e => setPass(e.target.value)} onKeyDown={e => e.key === 'Enter' && submit()} />
-            <button className="show-btn" onClick={() => setShow(s => !s)} type="button">
-              {show ? '🙈' : '👁'}
-            </button>
+            <button className="show-btn" onClick={() => setShow(s => !s)} type="button">{show ? '🙈' : '👁'}</button>
           </div>
         </div>
-        <button className="btn login-btn" onClick={submit}>Sign In</button>
+
+        {mode === 'register' && (
+          <div className="login-field">
+            <label>Confirm Password</label>
+            <input type={show ? 'text' : 'password'} placeholder="Repeat password" value={conf}
+              autoComplete="new-password"
+              onChange={e => setConf(e.target.value)} onKeyDown={e => e.key === 'Enter' && submit()} />
+          </div>
+        )}
+
+        <button className="btn login-btn" onClick={submit} disabled={busy}>
+          {busy ? 'Creating account…' : mode === 'login' ? 'Sign In' : 'Create Account'}
+        </button>
+
+        <div className="login-switch">
+          {mode === 'login'
+            ? <>No account? <button onClick={() => switchMode('register')}>Create one</button></>
+            : <>Already have an account? <button onClick={() => switchMode('login')}>Sign in</button></>}
+        </div>
       </div>
     </div>
   )
@@ -450,7 +507,7 @@ function AaiiCard({ data }) {
 }
 
 // ─── Portfolio View ───────────────────────────────────────────────────────────
-function PortfolioView({ portfolio, setPortfolio, apiKey, usdIls }) {
+function PortfolioView({ portfolio, setPortfolio, userId, apiKey, usdIls }) {
   const [quotes, setQuotes]         = useState({})
   const [loading, setLoading]       = useState(false)
   const [showAdd, setShowAdd]       = useState(false)
@@ -486,20 +543,20 @@ function PortfolioView({ portfolio, setPortfolio, apiKey, usdIls }) {
     } else {
       next = [...portfolio, holding]
     }
-    savePortfolio(next)
+    savePortfolio(userId, next)
     setPortfolio(next)
     fetchQuotes(next)
   }
 
   const removeHolding = (symbol) => {
     const next = portfolio.filter(h => h.symbol !== symbol)
-    savePortfolio(next)
+    savePortfolio(userId, next)
     setPortfolio(next)
   }
 
   const updateShares = (symbol, shares) => {
     const next = portfolio.map(h => h.symbol === symbol ? { ...h, shares: parseFloat(shares) || h.shares } : h)
-    savePortfolio(next)
+    savePortfolio(userId, next)
     setPortfolio(next)
   }
 
@@ -803,11 +860,12 @@ function RssFeedsPanel() {
 
 // ─── Main App ─────────────────────────────────────────────────────────────────
 export default function App() {
-  const [loggedIn, setLoggedIn]     = useState(() => localStorage.getItem('auth') === '1')
-  const [apiKey, setApiKey]         = useState(() => localStorage.getItem('finnhub_key') || '')
-  const [tab, setTab]               = useState('dashboard')
-  const [stocks, setStocks]         = useState(loadStocks)
-  const [portfolio, setPortfolio]   = useState(loadPortfolio)
+  const [currentUser, setCurrentUser] = useState(() => localStorage.getItem('current_user') || '')
+  const [loggedIn, setLoggedIn]       = useState(() => localStorage.getItem('auth') === '1' && !!localStorage.getItem('current_user'))
+  const [apiKey, setApiKey]           = useState(() => localStorage.getItem('finnhub_key') || '')
+  const [tab, setTab]                 = useState('dashboard')
+  const [stocks, setStocks]           = useState(() => loadStocks(localStorage.getItem('current_user') || ''))
+  const [portfolio, setPortfolio]     = useState(() => loadPortfolio(localStorage.getItem('current_user') || ''))
   const [showManage, setShowManage] = useState(false)
   const [newsTab, setNewsTab]       = useState('news')
   const [quotes, setQuotes]         = useState({})
@@ -822,8 +880,20 @@ export default function App() {
   const [marketSummary, setMarketSummary] = useState(null)
   const [vixData,       setVixData]       = useState(null)
 
-  const handleLogin  = () => { localStorage.setItem('auth', '1'); setLoggedIn(true) }
-  const handleLogout = () => { localStorage.removeItem('auth'); setLoggedIn(false) }
+  const handleLogin = (userId) => {
+    localStorage.setItem('auth', '1')
+    localStorage.setItem('current_user', userId)
+    setCurrentUser(userId)
+    setStocks(loadStocks(userId))
+    setPortfolio(loadPortfolio(userId))
+    setLoggedIn(true)
+  }
+  const handleLogout = () => {
+    localStorage.removeItem('auth')
+    localStorage.removeItem('current_user')
+    setCurrentUser('')
+    setLoggedIn(false)
+  }
 
   // Fear & Greed
   useEffect(() => {
@@ -903,7 +973,7 @@ export default function App() {
 
   useEffect(() => { if (loggedIn && apiKey) fetchAll() }, [loggedIn, apiKey])
 
-  const handleStocksSaved = (newList) => { setStocks(newList); fetchAll(newList) }
+  const handleStocksSaved = (newList) => { saveStocks(currentUser, newList); setStocks(newList); fetchAll(newList) }
 
   if (!loggedIn) return <LoginScreen onLogin={handleLogin} />
   if (!apiKey)   return <ApiKeyScreen onSave={setApiKey} />
@@ -931,6 +1001,7 @@ export default function App() {
               {loading ? 'Loading…' : '↻ Refresh'}
             </button>
           )}
+          <span className="header-user">{currentUser}</span>
           <button className="btn btn-outline" onClick={() => { localStorage.removeItem('finnhub_key'); setApiKey('') }}>⚙ Key</button>
           <button className="btn btn-outline" onClick={handleLogout}>Sign Out</button>
         </div>
@@ -1052,6 +1123,7 @@ export default function App() {
         <PortfolioView
           portfolio={portfolio}
           setPortfolio={setPortfolio}
+          userId={currentUser}
           apiKey={apiKey}
           usdIls={usdIls}
         />
