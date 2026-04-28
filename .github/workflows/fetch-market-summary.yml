@@ -37,8 +37,11 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add public/market-summary.json
           git diff --staged --quiet || git commit -m "chore: update market summary"
-          git pull --rebase origin main
-          git push
+          for i in 1 2 3; do
+            git push && break
+            echo "Push attempt $i failed, rebasing..."
+            git pull --rebase origin main
+          done
 
       - name: Trigger site redeploy
         run: gh workflow run deploy.yml --ref main
