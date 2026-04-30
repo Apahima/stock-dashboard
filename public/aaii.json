@@ -1,8 +1,12 @@
 {
-  "date": "April 22, 2026",
-  "bullish": 46.0,
-  "neutral": 19.5,
-  "bearish": 34.4,
-  "historicalAvg": { "bullish": 37.5, "neutral": 31.5, "bearish": 31.0 },
-  "updatedAt": "2026-04-24T05:06:39Z"
+  "date": "April 29, 2026",
+  "bullish": 38.1,
+  "neutral": 22.2,
+  "bearish": 39.7,
+  "historicalAvg": {
+    "bullish": 37.5,
+    "neutral": 31.5,
+    "bearish": 31.0
+  },
+  "updatedAt": "2026-04-30T18:06:33.917903Z"
 }
